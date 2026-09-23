@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 12
-CURRENT_TASK: docker-cicd-production
+CURRENT_PHASE: 13
+CURRENT_TASK: microservices-evolution
 STATUS: READY
 BLOCKERS: NONE
 
@@ -25,8 +25,8 @@ BLOCKERS: NONE
 | 09 | Redis + Kafka + Async Processing | DONE |
 | 10 | Testing + Security Hardening | DONE |
 | 11 | Observability + Performance | DONE |
-| 12 | Docker + CI/CD + Production | READY |
-| 13 | Microservices Evolution | PENDING |
+| 12 | Docker + CI/CD + Production | DONE |
+| 13 | Microservices Evolution | READY |
 
 ## Execution rules
 
@@ -50,7 +50,7 @@ BLOCKERS: NONE
 - [x] Phase 09 complete
 - [x] Phase 10 complete
 - [x] Phase 11 complete
-- [ ] Phase 12 complete
+- [x] Phase 12 complete
 - [ ] Phase 13 complete
 
 ## Phase log
@@ -459,3 +459,32 @@ Deliberately deferred:
 - Provisioned Grafana dashboards beyond the datasource.
 - A distributed tracing backend; the trace id is propagated but there is nowhere to view a span tree.
 - Running the Phase 06 reconciliation reports on a schedule.
+
+### Phase 12 — Docker + CI/CD + Production (DONE, 2026-09-23)
+
+Delivered:
+- Multi-stage `Dockerfile`: the build runs in the image so it does not depend on the machine that produced it; the runtime is a JRE, runs as a non-root user (uid 1001), sets container-aware JVM options (`MaxRAMPercentage=75`, `ExitOnOutOfMemoryError`) and declares a `HEALTHCHECK` against the readiness probe. `.dockerignore` keeps the context small and local secrets out of the image.
+- `bootJar` renamed to a fixed `bankcore.jar` so the entrypoint survives version bumps.
+- A `staging` profile: production settings plus DEBUG application logging and a reachable metrics endpoint, explicitly not a second development environment.
+- GitHub Actions: `ci.yml` builds and runs the whole suite against real containers with the coverage gate, runs the OWASP dependency scan on main and weekly, and pushes an image tagged by commit sha to GHCR only after the tests pass. `pr-title.yml` enforces conventional commit titles.
+- `docs/architecture/deployment.md`: clean-machine startup, the reasoning behind every image decision, profile table, configuration and secrets, the migration compatibility rule, the deployment procedure and the rollback procedure.
+
+Verification:
+- `docker build` succeeded; the resulting image is 634 MB.
+- The container was run against the compose PostgreSQL and verified: `/actuator/health` UP, Docker's own healthcheck reported `healthy`, `id` inside the container returned `uid=1001(bankcore)`, the active profile was `prod`, logs came out as one JSON object per line (confirming the Phase 11 logging in production mode), an unauthenticated `/api/v1/customers` returned 401, and no `Server` header was sent.
+- `./gradlew build` — BUILD SUCCESSFUL, 391 tests, coverage gate passed.
+
+Acceptance criteria:
+- [x] a clean machine can run the complete development stack (documented and exercised)
+- [x] CI fails on compilation or test failures (`./gradlew build` is the pipeline's first job)
+- [x] the deployment procedure is documented, including migrations and rollback
+
+Issues found and fixed during the phase:
+- The layered-jar extraction produced a layout that would not launch: first the entrypoint pointed at a jar name that did not exist, then renaming the extracted jar broke the classpath, and finally the loader layer turned out to be empty. Reverted to a fat jar and recorded the layering as an optimisation to revisit — an image that does not start is worse than one that ships a few megabytes more.
+- The Redis health indicator ran even with `bankcore.redis.enabled=false`, reporting the whole application DOWN because a dependency the deployment does not include was unreachable. The indicator is now tied to the same flag.
+
+Deliberately deferred:
+- Kubernetes manifests or a Helm chart; blue/green and canary configuration.
+- An automated post-deployment smoke test — readiness says it started, not that it works.
+- A PostgreSQL backup and restore procedure.
+- Layered images.

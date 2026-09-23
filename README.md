@@ -46,6 +46,11 @@ while learning enterprise backend engineering through a realistic core-banking d
 5. Use the agents under `agents/` as specialized execution roles.
 6. Never skip a phase's Definition of Done unless explicitly documented in `PROGRESS.md`.
 
+## Running it
+
+Full stack, container image, profiles, migration rules and the rollback procedure:
+[docs/architecture/deployment.md](docs/architecture/deployment.md).
+
 ## Local startup
 
 ### Prerequisites
@@ -207,5 +212,9 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   Micrometer metrics with bounded cardinality, Prometheus and Grafana in the local stack, health
   probes, connection-pool tuning and slow-query logging.
   Notes: [docs/architecture/observability.md](docs/architecture/observability.md).
+- **Phase 12 — done.** Multi-stage Dockerfile running as a non-root user with a readiness health
+  check, a staging profile, GitHub Actions for build/test/scan/image, and documented migration
+  and rollback procedures.
+  Notes: [docs/architecture/deployment.md](docs/architecture/deployment.md).
 
 See `PROGRESS.md` for the active phase.

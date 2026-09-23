@@ -1,0 +1,54 @@
+# Staging profile.
+#
+# Production's settings, not a second development environment: staging exists to find the things
+# that only appear with production configuration, so anything relaxed here is a class of bug that
+# will first be seen by customers.
+#
+# The differences from prod are deliberate and few: more log detail and the metrics endpoint
+# reachable, because staging is where problems are meant to be investigated.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    baseline-on-migrate: false
+
+  datasource:
+    url: ${BANKCORE_DB_URL}
+    username: ${BANKCORE_DB_USERNAME}
+    password: ${BANKCORE_DB_PASSWORD}
+
+bankcore:
+  metrics:
+    # Reachable because staging is behind the same private network as its monitoring.
+    public: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      # Details are useful when diagnosing a staging failure and there is no customer data to leak.
+      show-details: when_authorized
+
+server:
+  server-header:
+  error:
+    include-stacktrace: never
+    include-message: never
+  forward-headers-strategy: framework
+
+logging:
+  level:
+    root: INFO
+    com.example.bankcore: DEBUG
+    # Still never raised: parameter binding prints personal data and password hashes, and staging
+    # data is often a copy of production data.
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN

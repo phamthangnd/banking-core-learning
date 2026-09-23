@@ -129,6 +129,10 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+    # A dependency the deployment does not include must not report the application unhealthy.
+    # Tied to the same flag that decides whether Redis is used at all, so the two cannot drift.
+    redis:
+      enabled: ${BANKCORE_REDIS_ENABLED:false}
   info:
     env:
       enabled: true

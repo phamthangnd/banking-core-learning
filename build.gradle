@@ -72,6 +72,12 @@ dependencies {
 
 // Code quality baseline (Phase 00): fail loudly on compiler warnings we care about,
 // keep parameter names for Spring/Jackson, and always produce a coverage report.
+// A fixed artifact name, so the container entrypoint does not have to be edited for every
+// version bump. The version is still recorded in the jar's manifest and in the image tag.
+tasks.named('bootJar') {
+    archiveFileName = 'bankcore.jar'
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs << '-Xlint:all' << '-parameters'

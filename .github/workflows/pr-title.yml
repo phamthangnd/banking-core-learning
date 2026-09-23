@@ -1,0 +1,24 @@
+# Conventional commits are the project's convention (CLAUDE.md section 10), so the check belongs
+# in the pipeline rather than in a reviewer's memory.
+
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title follows conventional commits
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          if ! printf '%s' "$title" | grep -qE '^(feat|fix|refactor|test|docs|build|ci|chore)(\(.+\))?!?: .+'; then
+            echo "PR title must start with feat:, fix:, refactor:, test:, docs:, build:, ci: or chore:"
+            echo "Got: $title"
+            exit 1
+          fi

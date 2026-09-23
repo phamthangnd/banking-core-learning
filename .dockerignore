@@ -1,0 +1,17 @@
+# Everything the image does not need. A small build context makes the build faster and, more
+# importantly, stops local secrets and build output being shipped into an image by accident.
+.git
+.gradle
+build
+out
+.idea
+*.iml
+docs
+ops
+phases
+agents
+.env
+*.log
+*.md
+docker-compose*.yml
+Dockerfile
