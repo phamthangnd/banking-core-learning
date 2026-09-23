@@ -33,6 +33,12 @@ public enum ErrorCode {
     /** An account rule rejected the request: wrong lifecycle state, non-zero balance, and so on. */
     ACCOUNT_RULE_VIOLATED(Category.BUSINESS_RULE),
 
+    /** The addressed transaction does not exist. */
+    TRANSACTION_NOT_FOUND(Category.NOT_FOUND),
+
+    /** A money movement was rejected: inactive account, currency mismatch, insufficient funds. */
+    TRANSACTION_REJECTED(Category.BUSINESS_RULE),
+
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 

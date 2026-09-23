@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 05
-CURRENT_TASK: core-banking-transactions
+CURRENT_PHASE: 06
+CURRENT_TASK: ledger-concurrency-idempotency
 STATUS: READY
 BLOCKERS: NONE
 
@@ -18,8 +18,8 @@ BLOCKERS: NONE
 | 02 | PostgreSQL + JPA + Flyway | DONE |
 | 03 | Authentication + JWT + RBAC | DONE |
 | 04 | Customer + Account Management | DONE |
-| 05 | Core Banking Transactions | READY |
-| 06 | Ledger + Concurrency + Idempotency | PENDING |
+| 05 | Core Banking Transactions | DONE |
+| 06 | Ledger + Concurrency + Idempotency | READY |
 | 07 | Files + Notifications + Audit | PENDING |
 | 08 | Search + Master Data + Import/Export | PENDING |
 | 09 | Redis + Kafka + Async Processing | PENDING |
@@ -43,7 +43,7 @@ BLOCKERS: NONE
 - [x] Phase 02 complete
 - [x] Phase 03 complete
 - [x] Phase 04 complete
-- [ ] Phase 05 complete
+- [x] Phase 05 complete
 - [ ] Phase 06 complete
 - [ ] Phase 07 complete
 - [ ] Phase 08 complete
@@ -236,3 +236,35 @@ Deliberately deferred:
 - Money movement: deposits, withdrawals and transfers -> Phase 05; ledger, double-entry, concurrency and idempotency -> Phase 06.
 - Interest, fees and term-deposit maturity rules are not modelled.
 - Avatar upload and file validation -> Phase 07 (only the file reference exists today).
+
+### Phase 05 — Core Banking Transactions (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V6`): `transactions` with a reference sequence, foreign keys to `accounts`, check constraints for type, status, currency, positive amount, the shape of each transaction type, and `posted_at` consistency across the lifecycle. Indexes for statements on both sides plus status. Two triggers make the table append-only: any UPDATE touching an immutable column is refused, a terminal status cannot change, and DELETE is refused outright. `V7` seeds `transaction:read` and `transaction:write`.
+- `transaction` module: `Transaction` domain record (immutable, shape validated), `TransactionType`, `TransactionReferenceGenerator` (`TXN-<UTC date>-<sequence>`), `TransactionSearchQuery`, repository port, JPA entity/adapter with Specifications, `TransactionService` (deposit/withdraw/transfer/history), `TransactionReferences`, `TransactionFailureRecorder` and `TransactionController`.
+- Every balance change happens in the same `@Transactional` unit of work as the transaction row that explains it; a transfer's debit, credit and record commit together or not at all.
+- Rejections are recorded as FAILED transactions committed with `REQUIRES_NEW`, so the refusal's rollback does not erase the evidence of it.
+- Rules enforced: positive amount, account must be ACTIVE, currency must match, available funds (balance plus granted overdraft) respected, transfer needs two different accounts in the same currency (no silent FX).
+- The Phase 00 learning artefacts `TransactionRecord` and `TransactionAnalytics` were retired: the real `Transaction` model supersedes them, and carrying two parallel transaction models would have been worse than losing the exercises. `TransactionStatus` and `TransactionDirection` from Phase 00 are now production code.
+- Documentation: `docs/api/transaction-api.md`, `docs/learning/phase-05-transactions.md`, README.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 301 tests, 0 failures, 0 skipped, no compiler warnings. JaCoCo: 94.4% instruction, 81.1% branch.
+- Tests: `TransactionTest`, `TransactionReferenceGeneratorTest`, `TransactionApiIntegrationTest` (deposits, withdrawals, transfers, history and authorization — success and failure paths, each failure asserting that the balances did not move), `TransactionImmutabilityTest` (raw SQL against the triggers and check constraints).
+- Manual verification against the running application: Flyway applied V6 and V7; a deposit of 1000 produced `TXN-20260923-000000001` with `targetBalanceAfter=1000`; a transfer of 400 left 600 and 400 with the total conserved at 1000; an over-limit withdrawal returned 422, left both balances untouched and appeared in the history as FAILED with its reason; the account statement showed all three entries newest first. `UPDATE transactions SET amount = 1` was refused with "transaction … is immutable; post a compensating transaction instead" and `DELETE` with "financial records must not be deleted". No ERROR lines and no secrets in the log.
+
+Acceptance criteria:
+- [x] deposit works
+- [x] withdrawal validates available funds
+- [x] transfer is atomic
+- [x] failures roll back
+- [x] transaction history is immutable
+- [x] tests cover success and failure paths
+
+Issue found and fixed during the phase:
+- The first `posted_at` check constraint read `(status = 'POSTED') = (posted_at IS NOT NULL)`, which refused a reversal — a REVERSED transaction was posted and keeps its timestamp. Constraints have to be written against the lifecycle, not the current state.
+
+Deliberately deferred:
+- Idempotency keys, the double-entry ledger, the locking strategy and concurrency tests -> Phase 06.
+- A reversal endpoint (the status and the database transition exist; the compensating-transaction flow is Phase 06).
+- Scheduled or future-dated transactions, fees, interest and foreign exchange.

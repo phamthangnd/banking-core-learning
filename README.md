@@ -118,8 +118,8 @@ curl -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: applicati
 curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: Bearer <accessToken>'
 ```
 
-Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md) and
-[accounts](docs/api/account-api.md).
+Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md),
+[accounts](docs/api/account-api.md) and [transactions](docs/api/transaction-api.md).
 
 Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
 bearer token, and each operation additionally requires a permission: a `TELLER` may read
@@ -176,5 +176,10 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   explicit currency and overdraft rules enforced by the domain *and* by database constraints.
   API: [docs/api/account-api.md](docs/api/account-api.md).
   Modelling notes: [docs/learning/phase-04-customers-accounts.md](docs/learning/phase-04-customers-accounts.md).
+- **Phase 05 — done.** Deposits, withdrawals and transfers inside one database transaction, with
+  an immutable transaction history enforced by database triggers, recorded failures and
+  paginated statements.
+  API: [docs/api/transaction-api.md](docs/api/transaction-api.md).
+  Notes: [docs/learning/phase-05-transactions.md](docs/learning/phase-05-transactions.md).
 
 See `PROGRESS.md` for the active phase.
