@@ -119,8 +119,9 @@ curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: 
 ```
 
 Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md),
-[accounts](docs/api/account-api.md), [transactions](docs/api/transaction-api.md) and
-[ledger](docs/api/ledger-api.md).
+[accounts](docs/api/account-api.md), [transactions](docs/api/transaction-api.md),
+[ledger](docs/api/ledger-api.md) and
+[files/notifications/audit](docs/api/files-notifications-audit-api.md).
 
 Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
 bearer token, and each operation additionally requires a permission: a `TELLER` may read
@@ -187,5 +188,9 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   transactions, and concurrency tests that prove money is neither created nor destroyed.
   API: [docs/api/ledger-api.md](docs/api/ledger-api.md).
   Notes: [docs/learning/phase-06-ledger-concurrency-idempotency.md](docs/learning/phase-06-ledger-concurrency-idempotency.md).
+- **Phase 07 — done.** File upload and download through MinIO with allow-list validation and
+  magic-byte checks, a per-user notification inbox, an email port, and an append-only audit trail
+  recording actor, action, resource, outcome and trace id.
+  API: [docs/api/files-notifications-audit-api.md](docs/api/files-notifications-audit-api.md).
 
 See `PROGRESS.md` for the active phase.

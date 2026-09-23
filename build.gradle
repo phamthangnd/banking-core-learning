@@ -35,6 +35,11 @@ dependencies {
     // "Unsupported Database: PostgreSQL". Version is managed by the Spring Boot BOM.
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
+    // MinIO speaks the S3 API. The AWS SDK keeps the code portable between MinIO locally and
+    // real object storage in production, which is the whole reason for using MinIO in dev.
+    implementation 'software.amazon.awssdk:s3:2.29.29'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     // Starts a real PostgreSQL in Docker for integration tests and wires Spring Boot's
@@ -42,6 +47,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:minio'
 }
 
 // Code quality baseline (Phase 00): fail loudly on compiler warnings we care about,

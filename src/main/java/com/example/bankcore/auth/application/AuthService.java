@@ -1,5 +1,7 @@
 package com.example.bankcore.auth.application;
 
+import com.example.bankcore.audit.application.AuditService;
+import com.example.bankcore.audit.domain.AuditOutcome;
 import com.example.bankcore.auth.config.AuthProperties;
 import com.example.bankcore.auth.domain.AuthExceptions;
 import com.example.bankcore.auth.domain.PasswordResetToken;
@@ -51,6 +53,7 @@ public class AuthService {
     private final PasswordResetTokenSender resetTokenSender;
     private final JwtService jwtService;
     private final SecurityStateRecorder securityStateRecorder;
+    private final AuditService audit;
     private final AuthProperties properties;
     private final Clock clock;
 
@@ -65,6 +68,7 @@ public class AuthService {
                        PasswordResetTokenSender resetTokenSender,
                        JwtService jwtService,
                        SecurityStateRecorder securityStateRecorder,
+                       AuditService audit,
                        AuthProperties properties,
                        Clock clock) {
         this.users = users;
@@ -77,6 +81,7 @@ public class AuthService {
         this.resetTokenSender = resetTokenSender;
         this.jwtService = jwtService;
         this.securityStateRecorder = securityStateRecorder;
+        this.audit = audit;
         this.properties = properties;
         this.clock = clock;
     }
@@ -104,6 +109,7 @@ public class AuthService {
 
         User saved = users.save(user);
         log.info("User registered: id={} role={}", saved.id(), DEFAULT_ROLE);
+        audit.recordSuccess("USER_REGISTERED", "USER", saved.id().toString());
         return saved;
     }
 
@@ -128,6 +134,8 @@ public class AuthService {
             // Spend the same work as a real verification to avoid a timing oracle.
             passwordEncoder.matches(command.password(), dummyHash());
             log.info("Login failed: unknown username");
+            // Audited without the username: the trail must not become a list of guessed accounts.
+            audit.record("LOGIN", "USER", null, AuditOutcome.FAILURE, "unknown username");
             throw new AuthExceptions.InvalidCredentialsException();
         }
 
@@ -148,11 +156,13 @@ public class AuthService {
             // Committed in its own transaction: the exception below rolls this one back, and a
             // failure counter that disappears with the failure protects nobody.
             securityStateRecorder.recordFailedLogin(user);
+            audit.record("LOGIN", "USER", user.id().toString(), AuditOutcome.FAILURE, "wrong password");
             throw new AuthExceptions.InvalidCredentialsException();
         }
 
         User authenticated = users.save(user.withSuccessfulLogin(clock.instant()));
         log.info("Login succeeded: id={}", authenticated.id());
+        audit.recordSuccess("LOGIN", "USER", authenticated.id().toString());
 
         return issuePair(authenticated).tokens();
     }
@@ -239,6 +249,7 @@ public class AuthService {
 
         applyNewPassword(user, command.newPassword());
         log.info("Password changed: id={}", userId);
+        audit.recordSuccess("PASSWORD_CHANGE", "USER", userId.toString());
     }
 
     /**

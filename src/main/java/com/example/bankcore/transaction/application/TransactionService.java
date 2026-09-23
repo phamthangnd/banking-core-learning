@@ -1,5 +1,7 @@
 package com.example.bankcore.transaction.application;
 
+import com.example.bankcore.audit.application.AuditService;
+import com.example.bankcore.audit.domain.AuditOutcome;
 import com.example.bankcore.account.domain.Account;
 import com.example.bankcore.account.domain.AccountExceptions;
 import com.example.bankcore.account.domain.AccountRepository;
@@ -54,17 +56,19 @@ public class TransactionService {
     private final TransactionReferences references;
     private final TransactionFailureRecorder failureRecorder;
     private final LedgerPosting ledgerPosting;
+    private final AuditService audit;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactions, AccountRepository accounts,
                               TransactionReferences references,
                               TransactionFailureRecorder failureRecorder,
-                              LedgerPosting ledgerPosting, Clock clock) {
+                              LedgerPosting ledgerPosting, AuditService audit, Clock clock) {
         this.transactions = transactions;
         this.accounts = accounts;
         this.references = references;
         this.failureRecorder = failureRecorder;
         this.ledgerPosting = ledgerPosting;
+        this.audit = audit;
         this.clock = clock;
     }
 
@@ -89,6 +93,7 @@ public class TransactionService {
 
         log.info("Deposit posted: reference={} accountId={} currency={}",
                 posted.reference(), credited.id(), amount.currency());
+        audit.recordSuccess("DEPOSIT", "TRANSACTION", posted.id().toString());
         return posted;
     }
 
@@ -114,6 +119,7 @@ public class TransactionService {
 
         log.info("Withdrawal posted: reference={} accountId={} currency={}",
                 posted.reference(), debited.id(), amount.currency());
+        audit.recordSuccess("WITHDRAWAL", "TRANSACTION", posted.id().toString());
         return posted;
     }
 
@@ -175,6 +181,7 @@ public class TransactionService {
 
         log.info("Transfer posted: reference={} sourceId={} targetId={} currency={}",
                 posted.reference(), debited.id(), credited.id(), amount.currency());
+        audit.recordSuccess("TRANSFER", "TRANSACTION", posted.id().toString());
         return posted;
     }
 
@@ -216,6 +223,8 @@ public class TransactionService {
         transactions.save(original.withStatus(TransactionStatus.REVERSED, now));
         log.info("Transaction reversed: original={} compensating={}",
                 original.reference(), compensating.reference());
+        audit.record("TRANSACTION_REVERSED", "TRANSACTION", original.id().toString(),
+                AuditOutcome.SUCCESS, "compensated by " + compensating.reference());
 
         return compensating;
     }
@@ -321,6 +330,8 @@ public class TransactionService {
             TransactionType type, Money amount, UUID sourceId, UUID targetId,
             String description, String reason) {
         failureRecorder.record(type, amount, sourceId, targetId, description, reason);
+        // The audit entry records the attempt and why it was refused, never the amount.
+        audit.record(type.name(), "TRANSACTION", null, AuditOutcome.FAILURE, reason);
         return new TransactionExceptions.TransactionRejectedException(reason);
     }
 

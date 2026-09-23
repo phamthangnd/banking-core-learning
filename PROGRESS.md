@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 07
-CURRENT_TASK: files-notifications-audit
+CURRENT_PHASE: 08
+CURRENT_TASK: search-masterdata-import-export
 STATUS: READY
 BLOCKERS: NONE
 
@@ -20,8 +20,8 @@ BLOCKERS: NONE
 | 04 | Customer + Account Management | DONE |
 | 05 | Core Banking Transactions | DONE |
 | 06 | Ledger + Concurrency + Idempotency | DONE |
-| 07 | Files + Notifications + Audit | READY |
-| 08 | Search + Master Data + Import/Export | PENDING |
+| 07 | Files + Notifications + Audit | DONE |
+| 08 | Search + Master Data + Import/Export | READY |
 | 09 | Redis + Kafka + Async Processing | PENDING |
 | 10 | Testing + Security Hardening | PENDING |
 | 11 | Observability + Performance | PENDING |
@@ -45,7 +45,7 @@ BLOCKERS: NONE
 - [x] Phase 04 complete
 - [x] Phase 05 complete
 - [x] Phase 06 complete
-- [ ] Phase 07 complete
+- [x] Phase 07 complete
 - [ ] Phase 08 complete
 - [ ] Phase 09 complete
 - [ ] Phase 10 complete
@@ -306,3 +306,35 @@ Known gap, recorded honestly:
 Deliberately deferred:
 - A scheduled reconciliation job and alerting on a mismatch -> Phase 11.
 - Fee, interest and suspense system accounts.
+
+### Phase 07 — Files + Notifications + Audit (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V9`): `stored_files` (metadata, generated storage key, checksum, category, soft delete), `notifications` (with a partial index for the unread query) and `audit_events` (append-only via triggers on UPDATE and DELETE). `V10` seeds `file:read`, `file:write` and `audit:read`.
+- `file` module: `FileCategory` with per-category type allow-list and size ceiling, `FileValidation` (allow-list, magic bytes, size, generated key, sanitised name), `StoredFile`, `ObjectStorage` port, `S3ObjectStorage` adapter (AWS SDK against MinIO), JPA adapter, `FileService` and `FileController`. Downloads are always an attachment with `nosniff`.
+- `notification` module: `Notification` with idempotent read/unread transitions, repository with a bulk "mark all read", `NotificationService` (ownership-based access, 404 for someone else's notification), `NotificationController`, plus the `EmailSender` port with SMTP and logging implementations.
+- `audit` module: `AuditEvent` (actor, action, resource, outcome, trace id, non-sensitive detail), append-only repository, `AuditService` writing with `REQUIRES_NEW` so a failed action still leaves a record, and `AuditController` behind `audit:read`.
+- Auditing wired into registration, login success and failure, password change, deposits, withdrawals, transfers, reversals, rejected movements and every file operation.
+- `DatabaseCleaner` extended to the new tables; `TRUNCATE` is the intended asymmetry — production cannot delete a financial or audit record, a test can start clean.
+- Documentation: `docs/api/files-notifications-audit-api.md`, README.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 354 tests, 0 failures, 0 skipped, no compiler warnings.
+- `FileValidationTest` covers the allow-list, magic-byte mismatch (a PHP script announced as `image/png`), size ceiling, empty file, content-type normalisation and path traversal in the filename.
+- `FileUploadIntegrationTest` runs against a real MinIO container: bytes round-trip unchanged, an attachment disposition and `nosniff` are set, content that belies its type is rejected, a path-like filename is stripped, soft delete hides the file, `file:write` is required to upload, both the successful upload and the rejection appear in the audit trail with actor and trace id, and the trail contains no file content.
+- `NotificationInboxIntegrationTest` covers listing, unread filtering, read/unread toggling, idempotent marking, mark-all, the unread count, and that another user's notification is invisible and returns 404.
+
+Acceptance criteria:
+- [x] invalid files are rejected
+- [x] audit records identify actor/action/resource/time
+- [x] sensitive data is excluded from logs
+- [x] notification read/unread state works
+
+Issues found and fixed during the phase:
+- `S3ObjectStorage`'s startup check threw when MinIO was unreachable, which took the whole application down with it. Object storage is one feature among many; the check now logs and the file endpoints fail on their own when used.
+- The MinIO image is not pullable from Docker Hub in this environment. Both the test container and `docker-compose.yml` now use `quay.io/minio/minio`, which is MinIO's own registry.
+
+Deliberately deferred:
+- Virus scanning, signed download URLs and a CDN.
+- Moving notification delivery onto a queue -> Phase 09.
+- Audit retention and export.

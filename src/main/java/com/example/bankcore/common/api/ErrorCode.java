@@ -48,6 +48,15 @@ public enum ErrorCode {
     /** A request with this idempotency key is still being processed. */
     IDEMPOTENT_REQUEST_IN_PROGRESS(Category.CONFLICT),
 
+    /** An upload failed validation: wrong type, too large, or content that belies its type. */
+    INVALID_FILE(Category.VALIDATION),
+
+    /** The addressed file does not exist or has been deleted. */
+    FILE_NOT_FOUND(Category.NOT_FOUND),
+
+    /** The addressed notification does not exist. */
+    NOTIFICATION_NOT_FOUND(Category.NOT_FOUND),
+
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 

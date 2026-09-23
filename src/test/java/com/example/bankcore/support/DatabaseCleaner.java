@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
  * data seeded by migrations — roles and permissions — is left alone, because the migrations are
  * what own it.
  *
+ * <p>{@code TRUNCATE} also gets past the append-only triggers on the transaction, ledger and
+ * audit tables, which guard {@code DELETE} row by row. That is the intended asymmetry: the
+ * production path cannot erase a financial record, and a test can start from an empty database.
+ *
  * <p>This only ever runs against the throwaway container supplied by {@code @ServiceConnection}:
  * no test knows a connection string, so none can reach a real database.
  *
@@ -23,7 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class DatabaseCleaner {
 
     private static final String TABLES = String.join(", ",
-            "accounts", "customers", "refresh_tokens", "password_reset_tokens", "user_roles", "users");
+            "ledger_entries", "idempotency_keys", "transactions", "audit_events", "notifications",
+            "stored_files", "accounts", "customers", "refresh_tokens", "password_reset_tokens",
+            "user_roles", "users");
 
     private final JdbcTemplate jdbcTemplate;
 

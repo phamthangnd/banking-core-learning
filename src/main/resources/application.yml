@@ -55,6 +55,13 @@ spring:
     problemdetails:
       enabled: false
 
+  servlet:
+    multipart:
+      # A hard ceiling in front of the per-category limits: an oversized upload is rejected by
+      # the container before the application ever buffers it.
+      max-file-size: 20MB
+      max-request-size: 25MB
+
 management:
   endpoints:
     web:
@@ -70,7 +77,7 @@ management:
 info:
   app:
     name: BankCore
-    phase: "04 - Customer + Account Management"
+    phase: "07 - Files + Notifications + Audit"
 
 server:
   port: 8080
@@ -81,6 +88,20 @@ bankcore:
     minimum-age-years: 18
     default-page-size: 20
     max-page-size: 100
+
+  file:
+    endpoint: ${BANKCORE_S3_ENDPOINT:http://localhost:9000}
+    bucket: ${BANKCORE_S3_BUCKET:bankcore}
+    region: ${BANKCORE_S3_REGION:us-east-1}
+    # Credentials come from the environment. The local defaults match docker-compose's MinIO.
+    access-key: ${BANKCORE_S3_ACCESS_KEY:minio}
+    secret-key: ${BANKCORE_S3_SECRET_KEY:minio123}
+
+  notification:
+    email:
+      # Off unless a mail server is configured; the logging sender stands in.
+      enabled: ${BANKCORE_EMAIL_ENABLED:false}
+      from: no-reply@bankcore.local
 
   account:
     # Every account number starts with this prefix, then a sequence value and a Luhn check digit.
