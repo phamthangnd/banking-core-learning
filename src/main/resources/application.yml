@@ -147,7 +147,7 @@ management:
 info:
   app:
     name: BankCore
-    phase: "11 - Observability + Performance"
+    status: "All phases complete (00-13)"
 
 server:
   port: 8080
