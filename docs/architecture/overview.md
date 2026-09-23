@@ -68,3 +68,16 @@ exception handler, correlation ids, pagination types and money.
 - **Banking invariants live twice**: in the domain type that owns the data, and as database
   check constraints (`balance >= -overdraft_limit`, a closed account holds nothing). The first
   fails early and readably; the second is the only one that holds under concurrency.
+
+## Services
+
+The system is one deployable, plus one extracted service:
+
+```
+bankcore                      the modular monolith
+services/notification-service the notification context, extracted in Phase 13
+```
+
+They share no code and no database. The only contract between them is the
+`bankcore.transactions` Kafka topic. Which contexts were extracted, which were deliberately not,
+and what each decision costs: [adr/ADR-002-service-extraction.md](adr/ADR-002-service-extraction.md).

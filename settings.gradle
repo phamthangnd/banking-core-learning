@@ -1,1 +1,5 @@
 rootProject.name = 'bankcore'
+
+// Phase 13 extracts one service to demonstrate the pattern. Everything else deliberately stays
+// in the monolith; see docs/architecture/adr/ADR-002-service-extraction.md for why.
+include 'services:notification-service'

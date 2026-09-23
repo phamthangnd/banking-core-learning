@@ -216,5 +216,9 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   check, a staging profile, GitHub Actions for build/test/scan/image, and documented migration
   and rollback procedures.
   Notes: [docs/architecture/deployment.md](docs/architecture/deployment.md).
+- **Phase 13 — done.** Bounded contexts and data ownership mapped, one service extracted
+  (`services/notification-service`) with its own database and a Kafka-only contract, and a written
+  decision for every context that was deliberately left in the monolith.
+  ADR: [docs/architecture/adr/ADR-002-service-extraction.md](docs/architecture/adr/ADR-002-service-extraction.md).
 
 See `PROGRESS.md` for the active phase.

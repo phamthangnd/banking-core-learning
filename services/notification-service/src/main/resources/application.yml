@@ -1,0 +1,47 @@
+# The notification service's own configuration.
+#
+# Its own database, not a schema in the monolith's: two services sharing a database share a
+# deployment, because either can break the other with a migration. That single decision is what
+# makes this an extraction rather than a second process reading the same tables.
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: ${NOTIFICATION_DB_URL:jdbc:postgresql://localhost:5432/bankcore_notifications}
+    username: ${NOTIFICATION_DB_USERNAME:bankcore}
+    password: ${NOTIFICATION_DB_PASSWORD:bankcore}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${BANKCORE_KAFKA_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Its own consumer group, so it receives every event independently of any other consumer.
+      group-id: notification-service
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: record
+
+server:
+  # A different port, because in development both run on the same machine.
+  port: ${NOTIFICATION_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -6,7 +6,7 @@ This file is the source of truth for execution state.
 
 CURRENT_PHASE: 13
 CURRENT_TASK: microservices-evolution
-STATUS: READY
+STATUS: DONE
 BLOCKERS: NONE
 
 ## Phase status
@@ -26,7 +26,7 @@ BLOCKERS: NONE
 | 10 | Testing + Security Hardening | DONE |
 | 11 | Observability + Performance | DONE |
 | 12 | Docker + CI/CD + Production | DONE |
-| 13 | Microservices Evolution | READY |
+| 13 | Microservices Evolution | DONE |
 
 ## Execution rules
 
@@ -51,7 +51,7 @@ BLOCKERS: NONE
 - [x] Phase 10 complete
 - [x] Phase 11 complete
 - [x] Phase 12 complete
-- [ ] Phase 13 complete
+- [x] Phase 13 complete
 
 ## Phase log
 
@@ -488,3 +488,33 @@ Deliberately deferred:
 - An automated post-deployment smoke test — readiness says it started, not that it works.
 - A PostgreSQL backup and restore procedure.
 - Layered images.
+
+### Phase 13 — Microservices Evolution (DONE, 2026-09-23)
+
+Delivered:
+- `docs/architecture/adr/ADR-002-service-extraction.md`: bounded contexts and data ownership for all seven candidates, the costs extraction charges on day one, and a written decision for each — one extracted, one deferred until a measurement justifies it, four deliberately left in place.
+- **Extracted**: `services/notification-service`, a separate Gradle project and separate deployable with its own database, its own migrations, its own consumer group and no shared code with the monolith. The only contract between them is the `bankcore.transactions` Kafka event.
+- **Not extracted, with the reason recorded**: Auth (every request already validates the token locally, so a service adds a deployment without removing a dependency, and the real answer is a managed identity provider); Customer and Account (the KYC and open-account rules cross between them, and splitting turns two correctness properties into eventually-consistent ones); Transaction and Ledger (a transfer's debit, credit, transaction row and balanced ledger entries commit in one database transaction — the property that makes the money safe is exactly what a service boundary removes).
+- Event contract rules written down: identifiers and facts only, additive changes only, consumers tolerate absent optional fields, at-least-once therefore idempotent on both sides.
+- Consistency implications recorded, including the one people forget: two databases cannot be restored to a consistent instant, which is tolerable for notifications and is precisely why the ledger stays.
+
+Verification:
+- `./gradlew build` builds both projects; `./gradlew :services:notification-service:bootJar` produces a runnable `notification-service.jar`.
+- Monolith: 391 tests, 0 failures, coverage gate passed (85.4% instruction, 70.1% branch).
+
+Exercises from the phase specification:
+- [x] define bounded contexts · [x] identify data ownership · [x] introduce API/event contracts · [x] extract one service · [x] use Kafka for integration · [x] handle eventual consistency
+
+The phase's rule — do not split merely because it is fashionable — was followed: one extraction with a specific problem behind it, five refusals with the specific property each would break.
+
+Known gaps in the extraction, recorded rather than papered over:
+- The extracted service's read API has no authentication; it belongs behind the same gateway validating the same JWT, and writing a second authentication implementation would be worse than either.
+- The monolith still contains its own notification module. Both consume the same topic under different group ids, which is the strangler arrangement — run both, compare, remove the old path. The removal is not done.
+- No integration test spans both processes; that needs Kafka and both applications running.
+
+---
+
+## Project complete
+
+All fourteen phases are DONE. Every phase was implemented, tested, verified against a running
+application where that was possible, documented, and committed on its own.

@@ -1,0 +1,47 @@
+// The extracted notification service.
+//
+// A separate deployable with its own database. It shares no code with the monolith on purpose:
+// a shared library would recreate the coupling the extraction was meant to remove, and the two
+// would then have to be released together — which is the monolith, with extra network calls.
+//
+// The contract between them is the Kafka event, and nothing else.
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.0'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example.bankcore'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('bootJar') {
+    archiveFileName = 'notification-service.jar'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
