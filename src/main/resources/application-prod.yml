@@ -30,7 +30,22 @@ management:
     health:
       show-details: never
 
+server:
+  # Never advertise the server product and version: it tells an attacker which exploits to try.
+  server-header:
+  error:
+    # A stack trace in an error response is a map of the application's internals.
+    include-stacktrace: never
+    include-message: never
+  # Behind a load balancer that terminates TLS, so the application must be told the real scheme
+  # before it will emit HSTS or build correct absolute URLs.
+  forward-headers-strategy: framework
+
 logging:
   level:
     root: WARN
     com.example.bankcore: INFO
+    # Never turn these up in production: they print bound parameter values, which include
+    # personal data and, on the auth path, password hashes.
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN

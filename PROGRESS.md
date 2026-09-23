@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 10
-CURRENT_TASK: testing-security-hardening
+CURRENT_PHASE: 11
+CURRENT_TASK: observability-performance
 STATUS: READY
 BLOCKERS: NONE
 
@@ -23,8 +23,8 @@ BLOCKERS: NONE
 | 07 | Files + Notifications + Audit | DONE |
 | 08 | Search + Master Data + Import/Export | DONE |
 | 09 | Redis + Kafka + Async Processing | DONE |
-| 10 | Testing + Security Hardening | READY |
-| 11 | Observability + Performance | PENDING |
+| 10 | Testing + Security Hardening | DONE |
+| 11 | Observability + Performance | READY |
 | 12 | Docker + CI/CD + Production | PENDING |
 | 13 | Microservices Evolution | PENDING |
 
@@ -48,7 +48,7 @@ BLOCKERS: NONE
 - [x] Phase 07 complete
 - [x] Phase 08 complete
 - [x] Phase 09 complete
-- [ ] Phase 10 complete
+- [x] Phase 10 complete
 - [ ] Phase 11 complete
 - [ ] Phase 12 complete
 - [ ] Phase 13 complete
@@ -400,3 +400,34 @@ Deliberately deferred:
 - A lock or `SKIP LOCKED` claim so several instances can run the publisher.
 - Replay tooling for parked rows and dead-letter records.
 - Asynchronous bulk import with a pollable job id.
+
+### Phase 10 — Testing + Security Hardening (DONE, 2026-09-23)
+
+Delivered:
+- CORS policy (`SecurityHeadersConfig`): exact origins only, **empty by default**, credentials off because tokens travel in the Authorization header rather than cookies. `setAllowedOrigins` rather than patterns, since a pattern invites a wildcard.
+- Security headers on every response: strict CSP, HSTS for a year including subdomains, `nosniff`, `X-Frame-Options: DENY`, `no-referrer`, a Permissions-Policy denying camera/microphone/geolocation/payment, and the legacy XSS auditor explicitly disabled.
+- Actuator reduced to `health` and `info` with no health details for anonymous callers.
+- Production profile hardened: no server header, no stack traces or messages in error responses, forward-headers strategy for a TLS-terminating proxy, Hibernate SQL and parameter logging pinned to WARN.
+- `SecurityHardeningTest`: the checklist as executable assertions — headers present, a hostile origin refused, six dangerous actuator endpoints unreachable, garbage and `alg=none` tokens rejected, error responses free of class names and stack frames, validation refusing malformed registration, a registration response never echoing the password, the HTTP firewall answering 400, and unauthenticated errors still using the standard envelope.
+- OWASP dependency-check wired into the build as `dependencyCheckAnalyze`, failing at CVSS 7.0, deliberately outside `check` because the first run needs the NVD download.
+- JaCoCo coverage gate on `check`: 80% instruction, 65% branch.
+- `docs/architecture/security-checklist.md` maps every checklist item to its implementation and the test that proves it.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 391 tests, 0 failures, no compiler warnings, coverage gate passed.
+- Coverage: 85.5% instruction, 70.0% branch.
+- The full suite now spans unit tests (domain rules, validation, policies), integration tests on real PostgreSQL and MinIO, API tests through the whole filter chain, security tests, concurrency tests with real threads, and idempotency tests with concurrent retries.
+
+Acceptance criteria:
+- [x] critical business paths are tested end-to-end (auth, customer, account lifecycle, deposits/withdrawals/transfers, ledger reconciliation, idempotency, files, notifications, audit, import/export)
+
+Security checklist:
+- [x] password hashing · [x] JWT validation · [x] authorization · [x] input validation · [x] rate limiting · [x] file validation · [x] CORS policy · [x] secure headers · [x] secret management · [x] sensitive logging prevention
+
+Honest notes:
+- Branch coverage fell from 80% to 70% in Phase 09: the Kafka publisher and consumers need a broker to exercise and are not covered end to end. The gate was set to 65% to reflect that rather than hiding it.
+- `dependencyCheckAnalyze` is wired but was not run in this session; it needs to download the NVD database.
+- These tests were written by the same author as the code, so they cannot find what that author did not think of. No penetration test has been done.
+
+Deliberately deferred:
+- Virus scanning, signed download URLs, secret rotation and vault integration, a web application firewall, and CAPTCHA on the auth endpoints.

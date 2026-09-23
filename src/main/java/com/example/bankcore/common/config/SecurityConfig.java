@@ -15,6 +15,9 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 /**
  * The security baseline.
@@ -44,9 +47,38 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtAuthenticationConverter jwtAuthenticationConverter,
                                                    RestAuthenticationEntryPoint authenticationEntryPoint,
-                                                   RestAccessDeniedHandler accessDeniedHandler) throws Exception {
+                                                   RestAccessDeniedHandler accessDeniedHandler,
+                                                   CorsConfigurationSource corsConfigurationSource)
+            throws Exception {
         return http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
+                .headers(headers -> headers
+                        // The API returns JSON and is never framed; denying it outright removes
+                        // clickjacking as a category rather than mitigating it.
+                        .frameOptions(frame -> frame.deny())
+                        // Stops a browser guessing a content type other than the declared one,
+                        // which is what turns an uploaded file into executable content.
+                        .contentTypeOptions(withDefaults -> {})
+                        // Tells browsers to use HTTPS for a year, including subdomains. Harmless
+                        // over plain HTTP in development because browsers ignore it there.
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
+                        // A JSON API loads nothing, so the strictest possible policy applies:
+                        // if a response is ever rendered as a document, nothing in it may run.
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'none'; frame-ancestors 'none'; sandbox"))
+                        // Never leak an API path to a third-party site through the Referer header.
+                        .referrerPolicy(referrer -> referrer.policy(
+                                ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        // The legacy XSS auditor caused vulnerabilities of its own; modern
+                        // guidance is to disable it explicitly and rely on the CSP above.
+                        .xssProtection(xss -> xss.headerValue(
+                                XXssProtectionHeaderWriter.HeaderValue.DISABLED))
+                        // Browser features this API has no use for.
+                        .permissionsPolicyHeader(permissions -> permissions.policy(
+                                "camera=(), microphone=(), geolocation=(), payment=()")))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

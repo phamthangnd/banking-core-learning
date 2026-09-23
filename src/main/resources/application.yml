@@ -92,6 +92,8 @@ management:
   endpoints:
     web:
       exposure:
+        # Only what a load balancer and an operator need. Every extra endpoint is surface:
+        # /env and /configprops print configuration, /heapdump hands over the whole heap.
         include: health,info
   endpoint:
     health:

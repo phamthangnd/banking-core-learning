@@ -200,5 +200,8 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   idempotent consumers, retry with a dead-letter topic, and Redis for a shared cache and rate
   limiter.
   Notes: [docs/architecture/async-and-caching.md](docs/architecture/async-and-caching.md).
+- **Phase 10 — done.** CORS policy, security headers, a hardened actuator and production profile,
+  a security test suite, dependency scanning and a coverage gate.
+  Checklist: [docs/architecture/security-checklist.md](docs/architecture/security-checklist.md).
 
 See `PROGRESS.md` for the active phase.

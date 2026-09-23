@@ -1,6 +1,11 @@
 plugins {
     id 'java'
     id 'jacoco'
+    // Checks the dependency tree against the National Vulnerability Database. The first run
+    // downloads that database, which takes several minutes and needs network access, so it is a
+    // separate task rather than part of `check` — a build that cannot run offline is a build
+    // that gets skipped.
+    id 'org.owasp.dependencycheck' version '10.0.4'
     id 'org.springframework.boot' version '3.4.0'
     id 'io.spring.dependency-management' version '1.1.6'
 }
@@ -95,5 +100,47 @@ tasks.named('jacocoTestReport') {
     reports {
         xml.required = true
         html.required = true
+    }
+}
+
+// Coverage floor. Deliberately below the current figures (85% instruction, 70% branch): a gate
+// is there to catch a collapse, not to make every small refactor a negotiation. The branch figure
+// dropped in Phase 09 because the Kafka publisher and consumers need a broker to exercise; that
+// is a real gap, recorded in PROGRESS.md rather than hidden by lowering the bar to nothing.
+tasks.register('jacocoCoverageVerification', JacocoCoverageVerification) {
+    dependsOn tasks.named('jacocoTestReport')
+    violationRules {
+        rule {
+            limit {
+                counter = 'INSTRUCTION'
+                minimum = 0.80
+            }
+        }
+        rule {
+            limit {
+                counter = 'BRANCH'
+                minimum = 0.65
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('jacocoCoverageVerification')
+}
+
+dependencyCheck {
+    // A vulnerability with a CVSS score of 7 or more fails the scan.
+    failBuildOnCVSS = 7.0
+    formats = ['HTML', 'JSON']
+    // The NVD API is rate-limited without a key; supply one in CI.
+    nvd {
+        apiKey = System.getenv('NVD_API_KEY')
+    }
+    analyzers {
+        // Only the JVM dependencies matter here; the rest only slow the scan down.
+        assemblyEnabled = false
+        nodeAuditEnabled = false
+        retirejs { enabled = false }
     }
 }
