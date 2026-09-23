@@ -16,8 +16,12 @@ only to HTTP requests. Lacking a permission gives `403 ACCESS_DENIED`.
 | Operation | Permission | Roles that hold it |
 |---|---|---|
 | `GET /customers`, `GET /customers/{id}` | `customer:read` | ADMIN, OFFICER, TELLER |
-| `POST /customers`, `PUT /customers/{id}` | `customer:write` | ADMIN, OFFICER |
+| `POST /customers`, `PUT /customers/{id}`, `PUT /customers/{id}/avatar` | `customer:write` | ADMIN, OFFICER |
+| `POST /customers/{id}/kyc` | `customer:kyc` | ADMIN, OFFICER |
 | `DELETE /customers/{id}` | `customer:close` | ADMIN, OFFICER |
+
+KYC review and the avatar reference are documented with the account API, since they gate account
+activation: [account-api.md](account-api.md).
 
 ## Response envelope
 
@@ -167,6 +171,8 @@ data, and error responses travel into logs and support tickets.
 4. A closed customer is read-only.
 5. Email uniqueness is enforced by a unique index in the database, not only by the service
    check — under concurrency only the database can settle the race.
+6. A customer holding an account that is not closed cannot be closed; the accounts must be closed
+   first, or the money on them would be left with no owner.
 
 ## Configuration
 

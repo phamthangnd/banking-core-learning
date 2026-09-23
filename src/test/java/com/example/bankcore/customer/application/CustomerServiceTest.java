@@ -9,6 +9,8 @@ import com.example.bankcore.common.pagination.PageRequest;
 import com.example.bankcore.common.pagination.SortDirection;
 import com.example.bankcore.customer.domain.CustomerSearchQuery;
 import com.example.bankcore.customer.domain.CustomerStatus;
+import com.example.bankcore.customer.domain.IllegalCustomerKycTransitionException;
+import com.example.bankcore.customer.domain.KycStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,12 +36,16 @@ class CustomerServiceTest {
     private FakeCustomerRepository repository;
     private CustomerService service;
 
+    /** No open accounts unless a test says otherwise. */
+    private boolean customerHasOpenAccounts;
+
     @BeforeEach
     void setUp() {
         repository = new FakeCustomerRepository();
+        customerHasOpenAccounts = false;
         // minimum age 18, default page size 20, max page size 5 (small, to test the cap)
-        service = new CustomerService(repository, new CustomerProperties(18, 20, 5),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new CustomerService(repository, customerId -> customerHasOpenAccounts,
+                new CustomerProperties(18, 20, 5), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static CustomerSearchQuery pageOf(int size) {
@@ -253,6 +259,80 @@ class CustomerServiceTest {
         void shouldFailForUnknownCustomer() {
             assertThatThrownBy(() -> service.close(UUID.randomUUID()))
                     .isInstanceOf(CustomerNotFoundException.class);
+        }
+
+        @Test
+        void shouldRefuseToCloseACustomerHoldingOpenAccounts() {
+            Customer created = service.create(createCommand("alice@example.com"));
+            customerHasOpenAccounts = true;
+
+            // Closing the owner of an open account would leave the account, and the money on it,
+            // with nobody to claim them.
+            assertThatThrownBy(() -> service.close(created.id()))
+                    .isInstanceOf(CustomerRuleViolationException.class)
+                    .hasMessageContaining("open accounts");
+
+            assertThat(repository.findById(created.id()).orElseThrow().isClosed()).isFalse();
+        }
+    }
+
+    @Nested
+    class Kyc {
+
+        @Test
+        void shouldStartPending() {
+            Customer created = service.create(createCommand("alice@example.com"));
+
+            assertThat(created.kycStatus()).isEqualTo(KycStatus.PENDING);
+            assertThat(created.isKycVerified()).isFalse();
+            assertThat(created.kycReviewedAt()).isNull();
+        }
+
+        @Test
+        void shouldRecordAVerification() {
+            Customer created = service.create(createCommand("alice@example.com"));
+
+            Customer verified = service.decideKyc(created.id(), KycStatus.VERIFIED);
+
+            assertThat(verified.isKycVerified()).isTrue();
+            assertThat(verified.kycReviewedAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        void shouldAllowResubmissionAfterRejection() {
+            Customer created = service.create(createCommand("alice@example.com"));
+            service.decideKyc(created.id(), KycStatus.REJECTED);
+
+            assertThat(service.decideKyc(created.id(), KycStatus.PENDING).kycStatus())
+                    .isEqualTo(KycStatus.PENDING);
+        }
+
+        @Test
+        void shouldRefuseAnIllegalDecision() {
+            Customer created = service.create(createCommand("alice@example.com"));
+            service.decideKyc(created.id(), KycStatus.VERIFIED);
+
+            // VERIFIED -> REJECTED is not a review outcome; re-verification goes through PENDING.
+            assertThatThrownBy(() -> service.decideKyc(created.id(), KycStatus.REJECTED))
+                    .isInstanceOf(IllegalCustomerKycTransitionException.class);
+        }
+
+        @Test
+        void shouldRefuseToReviewAClosedCustomer() {
+            Customer created = service.create(createCommand("alice@example.com"));
+            service.close(created.id());
+
+            assertThatThrownBy(() -> service.decideKyc(created.id(), KycStatus.VERIFIED))
+                    .isInstanceOf(CustomerRuleViolationException.class);
+        }
+
+        @Test
+        void shouldStoreAndClearAnAvatarReference() {
+            Customer created = service.create(createCommand("alice@example.com"));
+            UUID fileId = UUID.randomUUID();
+
+            assertThat(service.setAvatar(created.id(), fileId).avatarFileId()).isEqualTo(fileId);
+            assertThat(service.setAvatar(created.id(), null).avatarFileId()).isNull();
         }
     }
 }

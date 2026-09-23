@@ -1,6 +1,10 @@
 package com.example.bankcore.support;
 
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -22,6 +26,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * accidentally point at a developer's local database.
  */
 @ActiveProfiles("test")
+@Import(PostgresIntegrationTest.CleanerConfiguration.class)
 public abstract class PostgresIntegrationTest {
 
     @ServiceConnection
@@ -29,5 +34,15 @@ public abstract class PostgresIntegrationTest {
 
     static {
         POSTGRES.start();
+    }
+
+    /** Makes {@link DatabaseCleaner} injectable in every test that extends this class. */
+    @TestConfiguration
+    public static class CleanerConfiguration {
+
+        @Bean
+        public DatabaseCleaner databaseCleaner(JdbcTemplate jdbcTemplate) {
+            return new DatabaseCleaner(jdbcTemplate);
+        }
     }
 }

@@ -41,8 +41,8 @@ class FlywaySchemaTest extends PostgresIntegrationTest {
                 """, String.class);
 
         assertThat(columns).containsExactly(
-                "created_at", "date_of_birth", "email", "full_name", "id",
-                "phone_number", "status", "updated_at", "version");
+                "avatar_file_id", "created_at", "date_of_birth", "email", "full_name", "id",
+                "kyc_reviewed_at", "kyc_status", "phone_number", "status", "updated_at", "version");
     }
 
     @Test

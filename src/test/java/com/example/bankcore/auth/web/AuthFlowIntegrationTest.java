@@ -53,10 +53,12 @@ class AuthFlowIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     private TestUsers testUsers;
 
+    @Autowired
+    private com.example.bankcore.support.DatabaseCleaner databaseCleaner;
+
     @BeforeEach
     void clearDatabase() {
-        refreshTokenJpaRepository.deleteAll();
-        userJpaRepository.deleteAll();
+        databaseCleaner.clear();
     }
 
     private static String registerBody(String username, String password) {

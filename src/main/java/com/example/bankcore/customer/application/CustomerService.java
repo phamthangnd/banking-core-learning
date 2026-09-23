@@ -8,7 +8,9 @@ import com.example.bankcore.customer.domain.CustomerEmailAlreadyUsedException;
 import com.example.bankcore.customer.domain.CustomerNotFoundException;
 import com.example.bankcore.customer.domain.CustomerRepository;
 import com.example.bankcore.customer.domain.CustomerRuleViolationException;
+import com.example.bankcore.customer.domain.CustomerAccountsPort;
 import com.example.bankcore.customer.domain.CustomerSearchQuery;
+import com.example.bankcore.customer.domain.KycStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -58,11 +60,14 @@ public class CustomerService {
     private static final Logger log = LoggerFactory.getLogger(CustomerService.class);
 
     private final CustomerRepository repository;
+    private final CustomerAccountsPort accounts;
     private final CustomerProperties properties;
     private final Clock clock;
 
-    public CustomerService(CustomerRepository repository, CustomerProperties properties, Clock clock) {
+    public CustomerService(CustomerRepository repository, CustomerAccountsPort accounts,
+                           CustomerProperties properties, Clock clock) {
         this.repository = repository;
+        this.accounts = accounts;
         this.properties = properties;
         this.clock = clock;
     }
@@ -131,11 +136,54 @@ public class CustomerService {
     }
 
     /**
+     * Records the outcome of a KYC review.
+     *
+     * <p>A separate permission from ordinary customer editing: deciding who the bank is allowed
+     * to do business with is a compliance action, not a data correction.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('customer:kyc')")
+    public Customer decideKyc(UUID id, KycStatus decision) {
+        Customer existing = getById(id);
+
+        if (existing.isClosed()) {
+            throw new CustomerRuleViolationException("A closed customer cannot be reviewed");
+        }
+
+        Customer reviewed = repository.save(existing.withKycStatus(decision, clock.instant()));
+        // The decision is logged, the evidence behind it is not.
+        log.info("KYC decision recorded: id={} status={}", reviewed.id(), decision);
+        return reviewed;
+    }
+
+    /**
+     * Points the customer at an avatar stored in the file module.
+     *
+     * <p>Only the file id is kept. The file module (Phase 07) owns the bytes, the validation and
+     * the storage location; putting a URL here would freeze a decision that belongs elsewhere.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('customer:write')")
+    public Customer setAvatar(UUID id, UUID fileId) {
+        Customer existing = getById(id);
+
+        if (existing.isClosed()) {
+            throw new CustomerRuleViolationException("A closed customer cannot be updated");
+        }
+
+        return repository.save(existing.withAvatar(fileId, clock.instant()));
+    }
+
+    /**
      * Closes a customer.
      *
      * <p>Customers are never hard-deleted: closing keeps the record for history and for anything
      * that references it. Closing an already closed customer succeeds without changing anything,
      * which makes the operation idempotent (CLAUDE.md section 3).
+     *
+     * <p>A customer holding an open account cannot be closed — the account would be left with no
+     * owner, and the money on it with nobody to claim it. The account module answers that
+     * question through a port the customer module declares.
      */
     @Transactional
     @PreAuthorize("hasAuthority('customer:close')")
@@ -144,6 +192,11 @@ public class CustomerService {
 
         if (existing.isClosed()) {
             return existing;
+        }
+
+        if (accounts.hasOpenAccounts(id)) {
+            throw new CustomerRuleViolationException(
+                    "A customer with open accounts cannot be closed; close the accounts first");
         }
 
         Customer closed = repository.save(existing.close(clock.instant()));

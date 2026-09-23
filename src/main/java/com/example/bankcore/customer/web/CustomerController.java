@@ -6,6 +6,7 @@ import com.example.bankcore.customer.application.CustomerService;
 import com.example.bankcore.customer.config.CustomerProperties;
 import com.example.bankcore.customer.web.dto.CreateCustomerRequest;
 import com.example.bankcore.customer.web.dto.CustomerResponse;
+import com.example.bankcore.customer.web.dto.CustomerProfileRequests;
 import com.example.bankcore.customer.web.dto.CustomerSearchRequest;
 import com.example.bankcore.customer.web.dto.UpdateCustomerRequest;
 import jakarta.validation.Valid;
@@ -92,6 +93,28 @@ public class CustomerController {
     public ApiResponse<CustomerResponse> update(@PathVariable UUID id,
                                                 @Valid @RequestBody UpdateCustomerRequest request) {
         return ApiResponse.success(CustomerResponse.from(customerService.update(id, request.toCommand())));
+    }
+
+    /**
+     * Records a KYC review outcome.
+     *
+     * <p>A command endpoint rather than a field on the update body: deciding whether the bank may
+     * do business with someone is a compliance action with its own permission and its own audit
+     * trail, not an attribute a data-entry request can set in passing.
+     */
+    @PostMapping("/{id}/kyc")
+    public ApiResponse<CustomerResponse> decideKyc(
+            @PathVariable UUID id, @Valid @RequestBody CustomerProfileRequests.KycDecision request) {
+        return ApiResponse.success(
+                CustomerResponse.from(customerService.decideKyc(id, request.status())));
+    }
+
+    /** Points the customer at an avatar file. The file module (Phase 07) owns the bytes. */
+    @PutMapping("/{id}/avatar")
+    public ApiResponse<CustomerResponse> setAvatar(
+            @PathVariable UUID id, @Valid @RequestBody CustomerProfileRequests.Avatar request) {
+        return ApiResponse.success(
+                CustomerResponse.from(customerService.setAvatar(id, request.fileId())));
     }
 
     /**

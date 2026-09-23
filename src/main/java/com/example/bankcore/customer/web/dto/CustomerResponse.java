@@ -2,6 +2,7 @@ package com.example.bankcore.customer.web.dto;
 
 import com.example.bankcore.customer.domain.Customer;
 import com.example.bankcore.customer.domain.CustomerStatus;
+import com.example.bankcore.customer.domain.KycStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,6 +23,9 @@ public record CustomerResponse(
         String phoneNumber,
         LocalDate dateOfBirth,
         CustomerStatus status,
+        KycStatus kycStatus,
+        Instant kycReviewedAt,
+        UUID avatarFileId,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -34,6 +38,9 @@ public record CustomerResponse(
                 customer.phoneNumber(),
                 customer.dateOfBirth(),
                 customer.status(),
+                customer.kycStatus(),
+                customer.kycReviewedAt(),
+                customer.avatarFileId(),
                 customer.createdAt(),
                 customer.updatedAt());
     }

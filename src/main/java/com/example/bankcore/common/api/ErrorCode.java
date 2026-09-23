@@ -27,6 +27,12 @@ public enum ErrorCode {
     /** A domain rule rejected an otherwise well-formed request. */
     CUSTOMER_RULE_VIOLATED(Category.BUSINESS_RULE),
 
+    /** The addressed account does not exist. */
+    ACCOUNT_NOT_FOUND(Category.NOT_FOUND),
+
+    /** An account rule rejected the request: wrong lifecycle state, non-zero balance, and so on. */
+    ACCOUNT_RULE_VIOLATED(Category.BUSINESS_RULE),
+
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 

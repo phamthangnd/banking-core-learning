@@ -2,6 +2,7 @@ package com.example.bankcore.customer.infrastructure.persistence;
 
 import com.example.bankcore.customer.domain.Customer;
 import com.example.bankcore.customer.domain.CustomerStatus;
+import com.example.bankcore.customer.domain.KycStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -56,6 +57,17 @@ public class CustomerEntity {
     @Column(name = "status", nullable = false, length = 20)
     private CustomerStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kyc_status", nullable = false, length = 20)
+    private KycStatus kycStatus;
+
+    @Column(name = "kyc_reviewed_at")
+    private Instant kycReviewedAt;
+
+    /** Reference into the file module (Phase 07); no foreign key, because that table does not exist yet. */
+    @Column(name = "avatar_file_id")
+    private UUID avatarFileId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -94,11 +106,15 @@ public class CustomerEntity {
         this.phoneNumber = customer.phoneNumber();
         this.dateOfBirth = customer.dateOfBirth();
         this.status = customer.status();
+        this.kycStatus = customer.kycStatus();
+        this.kycReviewedAt = customer.kycReviewedAt();
+        this.avatarFileId = customer.avatarFileId();
         this.updatedAt = customer.updatedAt();
     }
 
     public Customer toDomain() {
-        return new Customer(id, fullName, email, phoneNumber, dateOfBirth, status, createdAt, updatedAt);
+        return new Customer(id, fullName, email, phoneNumber, dateOfBirth, status,
+                kycStatus, kycReviewedAt, avatarFileId, createdAt, updatedAt);
     }
 
     public UUID getId() {

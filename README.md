@@ -118,8 +118,8 @@ curl -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: applicati
 curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: Bearer <accessToken>'
 ```
 
-Full contracts: [docs/api/auth-api.md](docs/api/auth-api.md) and
-[docs/api/customer-api.md](docs/api/customer-api.md).
+Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md) and
+[accounts](docs/api/account-api.md).
 
 Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
 bearer token, and each operation additionally requires a permission: a `TELLER` may read
@@ -171,5 +171,10 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   account lockout, rate limiting and permission checks on service methods.
   API: [docs/api/auth-api.md](docs/api/auth-api.md).
   Security notes: [docs/learning/phase-03-auth-jwt-rbac.md](docs/learning/phase-03-auth-jwt-rbac.md).
+- **Phase 04 — done.** Customer profile with KYC and an avatar reference; bank accounts with a
+  checked lifecycle, sequence-plus-check-digit account numbers, `BigDecimal` balances with
+  explicit currency and overdraft rules enforced by the domain *and* by database constraints.
+  API: [docs/api/account-api.md](docs/api/account-api.md).
+  Modelling notes: [docs/learning/phase-04-customers-accounts.md](docs/learning/phase-04-customers-accounts.md).
 
 See `PROGRESS.md` for the active phase.

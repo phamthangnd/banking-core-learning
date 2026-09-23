@@ -33,9 +33,12 @@ class JpaCustomerRepositoryTest extends PostgresIntegrationTest {
     @Autowired
     private CustomerJpaRepository jpaRepository;
 
+    @Autowired
+    private com.example.bankcore.support.DatabaseCleaner databaseCleaner;
+
     @BeforeEach
     void clearDatabase() {
-        jpaRepository.deleteAll();
+        databaseCleaner.clear();
     }
 
     private Customer persist(String name, String email, Instant createdAt) {

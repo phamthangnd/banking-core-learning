@@ -46,11 +46,14 @@ class CustomerApiIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     private CustomerJpaRepository jpaRepository;
 
+    @Autowired
+    private com.example.bankcore.support.DatabaseCleaner databaseCleaner;
+
     @BeforeEach
     void clearDatabase() {
         // Each test starts from a known state. The data lives in a container shared by the
         // whole JVM, so leftovers from a previous test would make assertions order-dependent.
-        jpaRepository.deleteAll();
+        databaseCleaner.clear();
     }
 
     private static String createBody(String email) {

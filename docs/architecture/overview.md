@@ -19,7 +19,11 @@ See `CLAUDE.md` for non-negotiable engineering rules.
 Package by feature under `com.example.bankcore`:
 
 ```
-common/       cross-cutting building blocks (money, api, config, concurrency)
+common/       cross-cutting building blocks (money, api, pagination, web, config)
+user/         users, roles and permissions
+auth/         authentication, tokens, password flows, rate limiting
+customer/     customer profile and KYC
+account/      bank accounts and their lifecycle
 transaction/  transaction module (domain rules today, persistence + API from Phase 05)
 ```
 
@@ -57,3 +61,10 @@ exception handler, correlation ids, pagination types and money.
   `@PreAuthorize`. Roles and permissions are seeded by migration `V3`.
 - **Domain rules** that do not need infrastructure (money arithmetic, transaction status
   transitions, aggregations, in-memory balances) are implemented and tested from Phase 00.
+- **Module boundaries**: where one module needs a fact from another, the *needing* module
+  declares a port and the other implements it (`CustomerAccountsPort` in `customer/domain`,
+  implemented by `account/infrastructure`). The dependency arrow stays one-directional, so the
+  customer module compiles without the account module existing.
+- **Banking invariants live twice**: in the domain type that owns the data, and as database
+  check constraints (`balance >= -overdraft_limit`, a closed account holds nothing). The first
+  fails early and readably; the second is the only one that holds under concurrency.

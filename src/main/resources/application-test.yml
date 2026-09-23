@@ -6,6 +6,10 @@ spring:
     banner-mode: off
 
 bankcore:
+  account:
+    # A non-zero ceiling so the overdraft rules are exercised by the tests.
+    maximum-overdraft-limit: 1000000
+
   auth:
     jwt:
       # Fixed key so tokens are reproducible within a test run. Test-only value.

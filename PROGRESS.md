@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 04
-CURRENT_TASK: customer-account-management
+CURRENT_PHASE: 05
+CURRENT_TASK: core-banking-transactions
 STATUS: READY
 BLOCKERS: NONE
 
@@ -17,8 +17,8 @@ BLOCKERS: NONE
 | 01 | Spring Boot Foundation | DONE |
 | 02 | PostgreSQL + JPA + Flyway | DONE |
 | 03 | Authentication + JWT + RBAC | DONE |
-| 04 | Customer + Account Management | READY |
-| 05 | Core Banking Transactions | PENDING |
+| 04 | Customer + Account Management | DONE |
+| 05 | Core Banking Transactions | READY |
 | 06 | Ledger + Concurrency + Idempotency | PENDING |
 | 07 | Files + Notifications + Audit | PENDING |
 | 08 | Search + Master Data + Import/Export | PENDING |
@@ -42,7 +42,7 @@ BLOCKERS: NONE
 - [x] Phase 01 complete
 - [x] Phase 02 complete
 - [x] Phase 03 complete
-- [ ] Phase 04 complete
+- [x] Phase 04 complete
 - [ ] Phase 05 complete
 - [ ] Phase 06 complete
 - [ ] Phase 07 complete
@@ -200,3 +200,39 @@ Known gaps, recorded deliberately:
 - Symmetric HS256 signing; asymmetric keys when a second service must verify tokens (Phase 13).
 - Password-reset tokens are not delivered anywhere yet (the port logs only the user id) — email in Phase 07.
 - Optional items from the phase specification not implemented: TOTP/OTP 2FA and OAuth2 social login.
+
+### Phase 04 — Customer + Account Management (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V4`): `customers` gains `kyc_status`, `kyc_reviewed_at` and `avatar_file_id`; new `accounts` table with a sequence for account numbers, a foreign key to `customers`, and check constraints for status, type, currency, `overdraft_limit >= 0`, `balance >= -overdraft_limit`, `closed_at` consistency and a zero balance on closure. Indexes on `(customer_id, status)` and `(status, opened_at)`. `V5` seeds `account:read`, `account:write`, `account:close` and `customer:kyc`.
+- Customer profile: `KycStatus` state machine (PENDING -> VERIFIED/REJECTED, back to PENDING for resubmission or re-verification), `decideKyc` behind its own `customer:kyc` permission, and an avatar file reference. Closing a customer now requires that no open account remains.
+- `account` module, package by feature: `Account` domain record with the balance rules, `AccountStatus` (`canTransact()`), `AccountType` (whether an overdraft is possible at all), `AccountNumberGenerator` (prefix + database sequence + Luhn check digit), `AccountSearchQuery`/`AccountSortField`, `AccountRepository` port, JPA entity/adapter with Specifications, `AccountService`, `AccountProperties` and `AccountController`.
+- Module boundary: `CustomerAccountsPort` is declared in `customer/domain` and implemented by `account/infrastructure/CustomerAccountsAdapter`, so the dependency arrow points one way and the customer module compiles without the account module.
+- Balance representation: `Money` (BigDecimal + explicit currency) in the domain, `NUMERIC(19,4)` plus a currency column in the database; `availableBalance` is returned alongside `balance` so clients never compute it themselves.
+- Lifecycle as commands (`/activate`, `/freeze`, `/unfreeze`, `/close`) rather than a status field a client can write; activation requires verified KYC; closing requires a zero balance and is idempotent.
+- Documentation: `docs/api/account-api.md`, `docs/learning/phase-04-customers-accounts.md`, updated `docs/api/customer-api.md`, `docs/architecture/overview.md` and README.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 280 tests, 0 failures, 0 skipped, no compiler warnings. JaCoCo: 94.8% instruction, 82.9% branch.
+- Test layers: `AccountTest` (24 invariant tests), `AccountNumberGeneratorTest` (including mutating every digit of a generated number and requiring each typo to be rejected), `AccountServiceTest`, `JpaAccountRepositoryTest` (round-trip, exact `NUMERIC` amounts, unique number, foreign key, and the check constraints exercised with raw SQL), `AccountApiIntegrationTest`, `AccountAuthorizationIntegrationTest`, plus the extended `CustomerServiceTest` KYC cases.
+- Manual verification against the running application: Flyway applied V4 and V5; opening an account returned `PENDING` with a valid number `90040010000013`; activation before KYC returned 422 and succeeded after verification; an overdraft above the configured maximum (0 by default) and any overdraft on a SAVINGS account were both rejected; one customer held two accounts in VND and USD; closing the customer while accounts were open returned 422 and succeeded once they were closed; a one-digit typo in an account number returned 404 while the correct number returned 200; freeze/unfreeze/close behaved as specified. A hand-written `UPDATE accounts SET balance = -1` was rejected by `ck_accounts_balance_within_overdraft`. No ERROR lines and no secrets in the log.
+
+Acceptance criteria:
+- [x] customer can own multiple accounts
+- [x] account lifecycle is validated
+- [x] authorization is enforced
+- [x] integration tests pass
+
+Banking rules verified:
+- [x] BigDecimal for money, `NUMERIC(19,4)` in storage, no floating point anywhere
+- [x] currency is explicit and fixed at opening
+- [x] no negative balance unless the account type and a granted overdraft permit it, enforced in the domain and by a check constraint
+- [x] closed accounts cannot transact (`AccountStatus.canTransact()`, exercised by `credit`/`debit`)
+
+Issue found and fixed during the phase:
+- Adding the `accounts` foreign key broke six existing test classes that cleaned up with `customerJpaRepository.deleteAll()`. The constraint is correct — deleting a customer who still owns an account must fail — so the tests gained a shared `DatabaseCleaner` that truncates the application tables in one statement and leaves migration-seeded reference data alone.
+
+Deliberately deferred:
+- Money movement: deposits, withdrawals and transfers -> Phase 05; ledger, double-entry, concurrency and idempotency -> Phase 06.
+- Interest, fees and term-deposit maturity rules are not modelled.
+- Avatar upload and file validation -> Phase 07 (only the file reference exists today).

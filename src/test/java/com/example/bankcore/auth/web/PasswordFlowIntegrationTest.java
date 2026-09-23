@@ -63,11 +63,12 @@ class PasswordFlowIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     private PasswordResetTokenJpaRepository resetTokenJpaRepository;
 
+    @Autowired
+    private com.example.bankcore.support.DatabaseCleaner databaseCleaner;
+
     @BeforeEach
     void clearState() {
-        resetTokenJpaRepository.deleteAll();
-        refreshTokenJpaRepository.deleteAll();
-        userJpaRepository.deleteAll();
+        databaseCleaner.clear();
         capturingSender.clear();
     }
 

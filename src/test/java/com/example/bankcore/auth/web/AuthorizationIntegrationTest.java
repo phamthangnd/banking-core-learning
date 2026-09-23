@@ -52,11 +52,12 @@ class AuthorizationIntegrationTest extends PostgresIntegrationTest {
     @Autowired
     private CustomerJpaRepository customerJpaRepository;
 
+    @Autowired
+    private com.example.bankcore.support.DatabaseCleaner databaseCleaner;
+
     @BeforeEach
     void clearDatabase() {
-        customerJpaRepository.deleteAll();
-        refreshTokenJpaRepository.deleteAll();
-        userJpaRepository.deleteAll();
+        databaseCleaner.clear();
     }
 
     private String tokenFor(String username, String role) throws Exception {
