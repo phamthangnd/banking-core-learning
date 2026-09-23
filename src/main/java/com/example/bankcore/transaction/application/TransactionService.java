@@ -5,6 +5,8 @@ import com.example.bankcore.audit.domain.AuditOutcome;
 import com.example.bankcore.account.domain.Account;
 import com.example.bankcore.account.domain.AccountExceptions;
 import com.example.bankcore.account.domain.AccountRepository;
+import com.example.bankcore.common.events.application.EventPublisher;
+import com.example.bankcore.common.events.domain.DomainEvents;
 import com.example.bankcore.common.money.Money;
 import com.example.bankcore.common.pagination.PageResult;
 import com.example.bankcore.transaction.domain.Transaction;
@@ -57,18 +59,23 @@ public class TransactionService {
     private final TransactionFailureRecorder failureRecorder;
     private final LedgerPosting ledgerPosting;
     private final AuditService audit;
+    private final EventPublisher events;
+    private final AccountOwnerLookup ownerLookup;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactions, AccountRepository accounts,
                               TransactionReferences references,
                               TransactionFailureRecorder failureRecorder,
-                              LedgerPosting ledgerPosting, AuditService audit, Clock clock) {
+                              LedgerPosting ledgerPosting, AuditService audit,
+                              EventPublisher events, AccountOwnerLookup ownerLookup, Clock clock) {
         this.transactions = transactions;
         this.accounts = accounts;
         this.references = references;
         this.failureRecorder = failureRecorder;
         this.ledgerPosting = ledgerPosting;
         this.audit = audit;
+        this.events = events;
+        this.ownerLookup = ownerLookup;
         this.clock = clock;
     }
 
@@ -94,6 +101,7 @@ public class TransactionService {
         log.info("Deposit posted: reference={} accountId={} currency={}",
                 posted.reference(), credited.id(), amount.currency());
         audit.recordSuccess("DEPOSIT", "TRANSACTION", posted.id().toString());
+        publishPosted(posted, credited.id());
         return posted;
     }
 
@@ -120,6 +128,7 @@ public class TransactionService {
         log.info("Withdrawal posted: reference={} accountId={} currency={}",
                 posted.reference(), debited.id(), amount.currency());
         audit.recordSuccess("WITHDRAWAL", "TRANSACTION", posted.id().toString());
+        publishPosted(posted, debited.id());
         return posted;
     }
 
@@ -182,6 +191,7 @@ public class TransactionService {
         log.info("Transfer posted: reference={} sourceId={} targetId={} currency={}",
                 posted.reference(), debited.id(), credited.id(), amount.currency());
         audit.recordSuccess("TRANSFER", "TRANSACTION", posted.id().toString());
+        publishPosted(posted, credited.id());
         return posted;
     }
 
@@ -263,6 +273,30 @@ public class TransactionService {
     @PreAuthorize("hasAuthority('transaction:read')")
     public PageResult<Transaction> search(TransactionSearchQuery query) {
         return transactions.search(query);
+    }
+
+    /**
+     * Records a {@code TransactionPosted} event in the outbox.
+     *
+     * <p>Written inside this transaction, so the event and the money movement commit together. A
+     * consumer turns it into a notification; doing that inline would let a slow notification hold
+     * up a transfer.
+     *
+     * <p>The payload carries identifiers only — no amount and no balance. A consumer that needs
+     * them asks the API, with its own authorization (CLAUDE.md section 4).
+     */
+    private void publishPosted(Transaction posted, UUID notifiedAccountId) {
+        events.publish(DomainEvents.TOPIC_TRANSACTIONS, posted.id().toString(),
+                DomainEvents.TRANSACTION_POSTED, new TransactionPostedEvent(
+                        posted.id(), posted.reference(), posted.type().name(), posted.currency(),
+                        notifiedAccountId, ownerLookup.ownerUserIdOf(notifiedAccountId).orElse(null)));
+    }
+
+    /**
+     * @param ownerUserId the user to notify, or {@code null} when the account has no linked user
+     */
+    public record TransactionPostedEvent(UUID transactionId, String reference, String type,
+                                         String currency, UUID accountId, UUID ownerUserId) {
     }
 
     private Account requireAccount(UUID id) {

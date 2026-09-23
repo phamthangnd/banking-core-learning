@@ -27,9 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class DatabaseCleaner {
 
     private static final String TABLES = String.join(", ",
-            "ledger_entries", "idempotency_keys", "transactions", "audit_events", "notifications",
-            "stored_files", "accounts", "customers", "refresh_tokens", "password_reset_tokens",
-            "user_roles", "users");
+            "outbox_events", "processed_events", "ledger_entries", "idempotency_keys", "transactions",
+            "audit_events", "notifications", "stored_files", "accounts", "customers",
+            "refresh_tokens", "password_reset_tokens", "user_roles", "users");
 
     private final JdbcTemplate jdbcTemplate;
 

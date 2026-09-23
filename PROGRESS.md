@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 09
-CURRENT_TASK: redis-kafka-async
+CURRENT_PHASE: 10
+CURRENT_TASK: testing-security-hardening
 STATUS: READY
 BLOCKERS: NONE
 
@@ -22,8 +22,8 @@ BLOCKERS: NONE
 | 06 | Ledger + Concurrency + Idempotency | DONE |
 | 07 | Files + Notifications + Audit | DONE |
 | 08 | Search + Master Data + Import/Export | DONE |
-| 09 | Redis + Kafka + Async Processing | READY |
-| 10 | Testing + Security Hardening | PENDING |
+| 09 | Redis + Kafka + Async Processing | DONE |
+| 10 | Testing + Security Hardening | READY |
 | 11 | Observability + Performance | PENDING |
 | 12 | Docker + CI/CD + Production | PENDING |
 | 13 | Microservices Evolution | PENDING |
@@ -47,7 +47,7 @@ BLOCKERS: NONE
 - [x] Phase 06 complete
 - [x] Phase 07 complete
 - [x] Phase 08 complete
-- [ ] Phase 09 complete
+- [x] Phase 09 complete
 - [ ] Phase 10 complete
 - [ ] Phase 11 complete
 - [ ] Phase 12 complete
@@ -369,3 +369,34 @@ Dependencies added, with justification:
 Deliberately deferred:
 - Asynchronous import with a job id to poll -> Phase 09.
 - CSV import, a validating dry run, and a PDF with branding and an embedded font for non-ASCII text.
+
+### Phase 09 — Redis + Kafka + Async Processing (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V13`): `outbox_events` (with a partial index on pending rows) and `processed_events` (composite key of event and consumer).
+- Transactional outbox in `common/events`: `OutboxEvent`, `EventPublisher` with `Propagation.MANDATORY` so an event can never be written outside the transaction it belongs to, JPA adapter with `append` joining the caller's transaction, and `OutboxPublisher` draining pending rows to Kafka on a schedule with retry and a FAILED park after five attempts.
+- `IdempotentConsumer`: claims each event with `INSERT … ON CONFLICT DO NOTHING`, restores the producer's trace id for the duration of the work, and releases nothing on success so a redelivery does nothing. Deduplication is per consumer.
+- `KafkaConsumerConfig`: exponential backoff for transient failures, no retries for unparseable messages, and a `<topic>.DLT` dead-letter topic.
+- `NotificationEventConsumer` turns a posted transaction into a notification, so a slow notification cannot hold up a transfer.
+- Transaction posting now writes a `TransactionPosted` event carrying identifiers only — no amount, no balance. `AccountOwnerLookup` is a port; `NoCustomerUserLink` returns nothing because no customer-to-user link exists yet, and inventing one would risk notifying the wrong person.
+- Redis: `RedisConfig` (shared cache with a TTL on everything and no null caching) and `RedisRateLimiter` (atomic `INCR`, expiry set once per window, fails open when Redis is down). Both behind `bankcore.redis.enabled`, off by default, with the in-memory implementations as the fallback.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 373 tests, 0 failures, no compiler warnings.
+- `OutboxIntegrationTest`: a posted transaction queues exactly one event with the right topic, type and key; the payload contains no amount or balance; a rejected transaction queues nothing because the event rolls back with it; the request's trace id travels on the event; publishing outside a transaction throws `IllegalTransactionStateException`; an event delivered five times is handled once; eight concurrent deliveries produce exactly one effect; two consumers each handle the same event once; a failing publish stays PENDING until the attempt limit and is then parked as FAILED.
+- Documentation: `docs/architecture/async-and-caching.md`.
+
+Acceptance criteria:
+- [x] events are published after successful business transactions (written in the same transaction, published after commit)
+- [x] consumers are idempotent
+- [x] failures are observable (parked outbox rows, dead-letter topic, logged with trace ids)
+- [x] cache invalidation is explicit (`@CacheEvict` on every write)
+
+Issue found and fixed during the phase:
+- The outbox and deduplication tables were not in `DatabaseCleaner`, so published counts leaked between tests. Both are now truncated.
+
+Deliberately deferred:
+- Change data capture instead of a polling publisher.
+- A lock or `SKIP LOCKED` claim so several instances can run the publisher.
+- Replay tooling for parked rows and dead-letter records.
+- Asynchronous bulk import with a pollable job id.

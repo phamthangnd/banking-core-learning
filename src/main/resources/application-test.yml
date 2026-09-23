@@ -5,7 +5,19 @@ spring:
   main:
     banner-mode: off
 
+  # Tests that need Kafka or Redis turn them on themselves with a container; the rest must not
+  # wait for a broker that is not there.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+
 bankcore:
+  events:
+    enabled: false
+  redis:
+    enabled: false
+
   account:
     # A non-zero ceiling so the overdraft rules are exercised by the tests.
     maximum-overdraft-limit: 1000000

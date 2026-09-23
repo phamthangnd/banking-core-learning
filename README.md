@@ -196,5 +196,9 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 - **Phase 08 — done.** Editable master data with an evicting cache, bulk customer import with a
   row-level error report, and streaming statement export to Excel and PDF over keyset pagination.
   API: [docs/api/masterdata-reports-api.md](docs/api/masterdata-reports-api.md).
+- **Phase 09 — done.** Transactional outbox so events commit with the change they describe,
+  idempotent consumers, retry with a dead-letter topic, and Redis for a shared cache and rate
+  limiter.
+  Notes: [docs/architecture/async-and-caching.md](docs/architecture/async-and-caching.md).
 
 See `PROGRESS.md` for the active phase.

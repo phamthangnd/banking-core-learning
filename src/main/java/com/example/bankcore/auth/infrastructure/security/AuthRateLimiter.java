@@ -33,11 +33,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class AuthRateLimiter {
 
+
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
     private final AuthProperties properties;
     private final Clock clock;
 
-    public AuthRateLimiter(AuthProperties properties, Clock clock) {
+    protected AuthRateLimiter(AuthProperties properties, Clock clock) {
         this.properties = properties;
         this.clock = clock;
     }
