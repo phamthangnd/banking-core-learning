@@ -8,6 +8,18 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    baseline-on-migrate: false
+
+  datasource:
+    # Credentials come from the environment only. Never commit them.
+    url: ${BANKCORE_DB_URL}
+    username: ${BANKCORE_DB_USERNAME}
+    password: ${BANKCORE_DB_PASSWORD}
 
 management:
   endpoints:

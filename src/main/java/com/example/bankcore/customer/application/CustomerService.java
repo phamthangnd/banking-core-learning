@@ -1,21 +1,23 @@
 package com.example.bankcore.customer.application;
 
+import com.example.bankcore.common.pagination.PageRequest;
+import com.example.bankcore.common.pagination.PageResult;
 import com.example.bankcore.customer.config.CustomerProperties;
 import com.example.bankcore.customer.domain.Customer;
 import com.example.bankcore.customer.domain.CustomerEmailAlreadyUsedException;
 import com.example.bankcore.customer.domain.CustomerNotFoundException;
 import com.example.bankcore.customer.domain.CustomerRepository;
 import com.example.bankcore.customer.domain.CustomerRuleViolationException;
-import com.example.bankcore.customer.domain.CustomerStorageLimitReachedException;
+import com.example.bankcore.customer.domain.CustomerSearchQuery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,13 +34,18 @@ import java.util.UUID;
  *   <li>a customer must be at least {@code bankcore.customer.minimum-age-years} old</li>
  *   <li>a birth date in the future is rejected</li>
  *   <li>a closed customer is read-only</li>
- *   <li>the in-memory store has a hard capacity limit</li>
  * </ol>
+ *
+ * <p>Transactions are declared here, not in the controller or the repository: the service method
+ * is the unit of work. Reads are marked {@code readOnly}, which lets the driver and Hibernate
+ * skip dirty checking and tells a future read replica that the work is safe to route there
+ * (CLAUDE.md section 3 — balance-changing operations get explicit transaction boundaries).
  *
  * <p>Java note: {@link Clock} is injected instead of calling {@code Instant.now()} directly.
  * "Now" is an input, and an input you can control is an input you can test.
  */
 @Service
+@Transactional(readOnly = true)
 public class CustomerService {
 
     private static final Logger log = LoggerFactory.getLogger(CustomerService.class);
@@ -53,12 +60,9 @@ public class CustomerService {
         this.clock = clock;
     }
 
+    @Transactional
     public Customer create(CustomerCommands.CreateCustomer command) {
         String email = Customer.normalizeEmail(command.email());
-
-        if (repository.count() >= properties.maxRecords()) {
-            throw new CustomerStorageLimitReachedException(properties.maxRecords());
-        }
 
         requireEmailAvailable(email, null);
         requireEligibleAge(command.dateOfBirth());
@@ -77,11 +81,26 @@ public class CustomerService {
         return repository.findById(id).orElseThrow(() -> new CustomerNotFoundException(id));
     }
 
-    /** At most {@code bankcore.customer.max-list-size} customers, oldest first. */
-    public List<Customer> list() {
-        return repository.findAll(properties.maxListSize());
+    /**
+     * One page of customers matching the filters.
+     *
+     * <p>The requested page size is capped at {@code bankcore.customer.max-page-size}: a client
+     * asking for a million rows must not be able to decide how much memory the server allocates.
+     */
+    public PageResult<Customer> search(CustomerSearchQuery query) {
+        PageRequest requested = query.page();
+        int cappedSize = Math.min(requested.size(), properties.maxPageSize());
+
+        CustomerSearchQuery capped = new CustomerSearchQuery(
+                query.nameFragment(),
+                query.email(),
+                query.status(),
+                new PageRequest(requested.page(), cappedSize, requested.sortProperty(), requested.direction()));
+
+        return repository.search(capped);
     }
 
+    @Transactional
     public Customer update(UUID id, CustomerCommands.UpdateCustomer command) {
         Customer existing = getById(id);
 
@@ -107,6 +126,7 @@ public class CustomerService {
      * that references it. Closing an already closed customer succeeds without changing anything,
      * which makes the operation idempotent (CLAUDE.md section 3).
      */
+    @Transactional
     public Customer close(UUID id) {
         Customer existing = getById(id);
 

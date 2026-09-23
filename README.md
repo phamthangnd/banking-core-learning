@@ -51,7 +51,8 @@ while learning enterprise backend engineering through a realistic core-banking d
 ### Prerequisites
 
 - JDK 21 (the Gradle toolchain requires exactly Java 21; the JDK used to launch Gradle may differ)
-- Docker + Docker Compose — only needed from Phase 02 onward, when PostgreSQL is introduced
+- Docker + Docker Compose — required: PostgreSQL runs in Docker, and the integration tests start
+  their own PostgreSQL through Testcontainers
 - No global Gradle installation: the committed wrapper (`./gradlew`) pins the Gradle version
 
 Check your JDK:
@@ -66,15 +67,24 @@ If your default JDK is not 21, point Gradle at one explicitly:
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 ```
 
+### Start PostgreSQL
+
+```bash
+docker compose up -d postgres
+```
+
 ### Run the application
 
 ```bash
 ./gradlew bootRun
 ```
 
-The application starts on http://localhost:8080 with the `local` profile.
-Phase 00 needs no database, no Redis and no Kafka: the persistence auto-configuration is
-deliberately switched off in `application.yml` until Phase 02 introduces PostgreSQL and Flyway.
+The application starts on http://localhost:8080 with the `local` profile and connects to the
+PostgreSQL above. Flyway creates and migrates the schema on startup; Hibernate runs with
+`ddl-auto=validate` and never touches the schema itself.
+
+Redis, Kafka and MinIO in `docker-compose.yml` are not used yet — they arrive in Phase 07 and
+Phase 09.
 
 ### Verify it is up
 
@@ -92,10 +102,10 @@ curl -i -X POST http://localhost:8080/api/v1/customers -H 'Content-Type: applica
 ```
 
 ```bash
-curl http://localhost:8080/api/v1/customers
+curl 'http://localhost:8080/api/v1/customers?page=0&size=20&sort=CREATED_AT&direction=DESC'
 ```
 
-Full contract: [docs/api/customer-api.md](docs/api/customer-api.md).
+Full contract, including filters, sorting and paging: [docs/api/customer-api.md](docs/api/customer-api.md).
 
 **The customer API is not authenticated yet** (Phase 03 adds JWT + RBAC), so do not expose this
 application outside a development machine. Every path other than the customer API and the
@@ -107,6 +117,9 @@ opens only what it needs.
 ```bash
 ./gradlew test
 ```
+
+Integration tests start their own PostgreSQL container, so Docker must be running. They never
+touch the database from `docker compose`.
 
 Coverage report (JaCoCo): `build/reports/jacoco/test/html/index.html`
 Test report: `build/reports/tests/test/index.html`
@@ -125,21 +138,20 @@ Select a profile explicitly:
 SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 ```
 
-### Supporting infrastructure (used from Phase 02 onward)
-
-```bash
-docker compose up -d postgres
-```
-
 ## Current state
 
 - **Phase 00 — done.** Gradle wrapper, Spring Boot skeleton, configuration profiles, health
   endpoint, security baseline, Java fundamentals exercises and their tests.
   Java notes: [docs/learning/phase-00-java-comeback.md](docs/learning/phase-00-java-comeback.md).
-- **Phase 01 — done.** Customer CRUD in memory: controller, service, domain model, repository
-  port, DTOs with Bean Validation, standardized response envelope, global exception handler,
-  correlation ids and typed configuration properties.
+- **Phase 01 — done.** Customer CRUD: controller, service, domain model, repository port, DTOs
+  with Bean Validation, standardized response envelope, global exception handler, correlation
+  ids and typed configuration properties.
   API contract: [docs/api/customer-api.md](docs/api/customer-api.md).
   Spring notes: [docs/learning/phase-01-spring-foundation.md](docs/learning/phase-01-spring-foundation.md).
+- **Phase 02 — done.** Persistence moved to PostgreSQL: Flyway migrations and indexes, JPA
+  entity and adapter behind the same repository port, optimistic locking, paginated/filtered/
+  sorted search, and integration tests on Testcontainers.
+  Persistence notes, with measured query plans:
+  [docs/learning/phase-02-postgres-jpa-flyway.md](docs/learning/phase-02-postgres-jpa-flyway.md).
 
 See `PROGRESS.md` for the active phase.

@@ -5,23 +5,46 @@ spring:
   profiles:
     default: local
 
-  # Phase 00 is a runtime skeleton: there is no database yet.
-  # PostgreSQL + JPA + Flyway are introduced in Phase 02, which removes these
-  # exclusions and replaces them with a real datasource configuration.
-  # UserDetailsService is excluded so Spring Boot never generates and logs a
-  # default password (CLAUDE.md section 4: secrets must never reach the logs).
+  # UserDetailsService is excluded so Spring Boot never generates and logs a default password
+  # (CLAUDE.md section 4: secrets must never reach the logs). Real authentication: Phase 03.
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+  datasource:
+    url: ${BANKCORE_DB_URL:jdbc:postgresql://localhost:5432/bankcore}
+    username: ${BANKCORE_DB_USERNAME:bankcore}
+    password: ${BANKCORE_DB_PASSWORD:bankcore}
+    hikari:
+      # A connection pool is a queue in front of a scarce resource. These are deliberate,
+      # modest defaults; Phase 11 tunes them against measurements rather than guesses.
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: bankcore-pool
 
   jpa:
     hibernate:
+      # Never 'create' or 'update': Flyway owns the schema, Hibernate only checks that the
+      # entity mapping matches it and refuses to start if they disagree.
       ddl-auto: validate
+    # Off by design: an open session in the view layer hides lazy loading inside the response
+    # rendering, which is where N+1 queries go unnoticed.
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Fail instead of "fixing" a drifted schema silently.
+    validate-on-migrate: true
+    baseline-on-migrate: false
 
   jackson:
     default-property-inclusion: non_null
@@ -47,7 +70,7 @@ management:
 info:
   app:
     name: BankCore
-    phase: "01 - Spring Boot Foundation"
+    phase: "02 - PostgreSQL + JPA + Flyway"
 
 server:
   port: 8080
@@ -56,8 +79,8 @@ server:
 bankcore:
   customer:
     minimum-age-years: 18
-    max-records: 10000
-    max-list-size: 100
+    default-page-size: 20
+    max-page-size: 100
 
 logging:
   # Every log line carries the correlation id set by CorrelationIdFilter, so a response's

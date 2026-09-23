@@ -1,4 +1,13 @@
 # Local development profile: verbose enough to learn from, never used in production.
+spring:
+  jpa:
+    properties:
+      hibernate:
+        # See the SQL Hibernate actually sends. The fastest way to notice an N+1 problem is to
+        # watch the same query scroll past once per row.
+        format_sql: true
+    show-sql: false
+
 management:
   endpoints:
     web:
@@ -11,3 +20,6 @@ management:
 logging:
   level:
     com.example.bankcore: DEBUG
+    # Uncomment while studying queries:
+    # org.hibernate.SQL: DEBUG
+    # org.hibernate.orm.jdbc.bind: TRACE

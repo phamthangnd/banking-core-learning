@@ -1,9 +1,12 @@
 package com.example.bankcore.customer.web;
 
 import com.example.bankcore.common.api.ApiResponse;
+import com.example.bankcore.common.pagination.PageResult;
 import com.example.bankcore.customer.application.CustomerService;
+import com.example.bankcore.customer.config.CustomerProperties;
 import com.example.bankcore.customer.web.dto.CreateCustomerRequest;
 import com.example.bankcore.customer.web.dto.CustomerResponse;
+import com.example.bankcore.customer.web.dto.CustomerSearchRequest;
 import com.example.bankcore.customer.web.dto.UpdateCustomerRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -40,9 +44,11 @@ import java.util.UUID;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final CustomerProperties properties;
 
-    public CustomerController(CustomerService customerService) {
+    public CustomerController(CustomerService customerService, CustomerProperties properties) {
         this.customerService = customerService;
+        this.properties = properties;
     }
 
     /** Creates a customer. Returns 201 with a {@code Location} header pointing at the new resource. */
@@ -63,21 +69,23 @@ public class CustomerController {
     }
 
     /**
-     * Lists customers.
+     * Searches customers, one page at a time.
      *
-     * <p>The result is capped by {@code bankcore.customer.max-list-size} and the metadata says so,
-     * so a client can tell "this is everything" from "this is a truncated view". Real pagination
-     * comes with the database in Phase 02 (CLAUDE.md section 5).
+     * <p>Filters, sorting and paging all come from the query string; the metadata block reports
+     * where the client is in the result set so it can page through it without guessing.
      */
     @GetMapping
-    public ApiResponse<List<CustomerResponse>> list() {
-        List<CustomerResponse> customers = customerService.list().stream()
-                .map(CustomerResponse::from)
-                .toList();
+    public ApiResponse<List<CustomerResponse>> search(@Valid @ModelAttribute CustomerSearchRequest request) {
+        PageResult<CustomerResponse> page = customerService
+                .search(request.toQuery(properties.defaultPageSize()))
+                .map(CustomerResponse::from);
 
-        return ApiResponse.success(customers, Map.of(
-                "count", customers.size(),
-                "paginated", false));
+        return ApiResponse.success(page.content(), Map.of(
+                "page", page.page(),
+                "size", page.size(),
+                "totalElements", page.totalElements(),
+                "totalPages", page.totalPages(),
+                "hasNext", page.hasNext()));
     }
 
     @PutMapping("/{id}")

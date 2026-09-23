@@ -14,15 +14,15 @@ import org.springframework.validation.annotation.Validated;
  * below fail at <em>startup</em>, so a typo in a configuration file stops the application instead
  * of silently changing a business rule.
  *
- * @param minimumAgeYears   minimum age to become a customer
- * @param maxRecords        hard ceiling of the in-memory store (Phase 01 only)
- * @param maxListSize       maximum number of customers returned by the list endpoint
+ * @param minimumAgeYears  minimum age to become a customer
+ * @param defaultPageSize  page size used when a client does not ask for one
+ * @param maxPageSize      hard ceiling on the page size a client may request
  */
 @ConfigurationProperties(prefix = "bankcore.customer")
 @Validated
 public record CustomerProperties(
         @Min(0) @Max(150) @DefaultValue("18") int minimumAgeYears,
-        @Min(1) @DefaultValue("10000") int maxRecords,
-        @Min(1) @Max(1000) @DefaultValue("100") int maxListSize
+        @Min(1) @Max(200) @DefaultValue("20") int defaultPageSize,
+        @Min(1) @Max(500) @DefaultValue("100") int maxPageSize
 ) {
 }

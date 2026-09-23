@@ -8,6 +8,7 @@ plugins {
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
 
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -27,9 +28,15 @@ dependencies {
 
     runtimeOnly 'org.postgresql:postgresql'
     implementation 'org.flywaydb:flyway-core'
+    // Flyway 10 moved per-database support into separate modules; flyway-core alone reports
+    // "Unsupported Database: PostgreSQL". Version is managed by the Spring Boot BOM.
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // Starts a real PostgreSQL in Docker for integration tests and wires Spring Boot's
+    // datasource to it via @ServiceConnection, so tests never talk to a shared database.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
 }
@@ -43,6 +50,20 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    // Testcontainers looks for the Docker daemon at /var/run/docker.sock by default.
+    // Docker Desktop on macOS exposes it under the user's home directory instead, so point
+    // the test JVM at it unless the environment already says where Docker lives.
+    def dockerSocket = new File(System.getProperty('user.home'), '.docker/run/docker.sock')
+    if (System.getenv('DOCKER_HOST') == null && dockerSocket.exists()) {
+        environment 'DOCKER_HOST', "unix://${dockerSocket.absolutePath}"
+    }
+
+    // docker-java, which Testcontainers uses, asks for Docker API 1.32 by default.
+    // Docker Engine 29 refuses anything below 1.40 (HTTP 400 on /v1.32/info), so pin a version
+    // both ends support. Remove once the Testcontainers version in use negotiates this itself.
+    systemProperty 'api.version', System.getProperty('api.version', '1.44')
+
     testLogging {
         events 'passed', 'skipped', 'failed'
         exceptionFormat 'full'

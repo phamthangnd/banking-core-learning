@@ -1,10 +1,12 @@
 package com.example.bankcore.customer.web;
 
 import com.example.bankcore.common.config.SecurityConfig;
+import com.example.bankcore.common.pagination.PageResult;
 import com.example.bankcore.common.trace.CorrelationId;
 import com.example.bankcore.common.web.CorrelationIdFilter;
 import com.example.bankcore.common.web.GlobalExceptionHandler;
 import com.example.bankcore.customer.application.CustomerService;
+import com.example.bankcore.customer.config.CustomerProperties;
 import com.example.bankcore.customer.domain.Customer;
 import com.example.bankcore.customer.domain.CustomerEmailAlreadyUsedException;
 import com.example.bankcore.customer.domain.CustomerNotFoundException;
@@ -12,6 +14,7 @@ import com.example.bankcore.customer.domain.CustomerRuleViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -23,6 +26,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -43,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(CustomerController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class, CorrelationIdFilter.class})
+@EnableConfigurationProperties(CustomerProperties.class)
 @ActiveProfiles("test")
 class CustomerControllerTest {
 
@@ -185,14 +190,65 @@ class CustomerControllerTest {
     }
 
     @Test
-    void shouldListCustomersWithMetadata() throws Exception {
-        given(customerService.list()).willReturn(List.of(customer()));
+    void shouldReturnAPageOfCustomersWithNavigationMetadata() throws Exception {
+        given(customerService.search(any()))
+                .willReturn(new PageResult<>(List.of(customer()), 0, 20, 45));
 
         mockMvc.perform(get("/api/v1/customers"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.metadata.count").value(1))
-                .andExpect(jsonPath("$.metadata.paginated").value(false));
+                .andExpect(jsonPath("$.metadata.page").value(0))
+                .andExpect(jsonPath("$.metadata.size").value(20))
+                .andExpect(jsonPath("$.metadata.totalElements").value(45))
+                .andExpect(jsonPath("$.metadata.totalPages").value(3))
+                .andExpect(jsonPath("$.metadata.hasNext").value(true));
+    }
+
+    @Test
+    void shouldPassFiltersAndSortingToTheService() throws Exception {
+        given(customerService.search(any())).willReturn(new PageResult<>(List.of(), 1, 5, 0));
+
+        mockMvc.perform(get("/api/v1/customers")
+                        .param("page", "1")
+                        .param("size", "5")
+                        .param("sort", "FULL_NAME")
+                        .param("direction", "ASC")
+                        .param("name", "alice")
+                        .param("status", "ACTIVE"))
+                .andExpect(status().isOk());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.example.bankcore.customer.domain.CustomerSearchQuery.class);
+        verify(customerService).search(captor.capture());
+
+        var query = captor.getValue();
+        assertThat(query.nameFragment()).isEqualTo("alice");
+        assertThat(query.status()).isEqualTo(com.example.bankcore.customer.domain.CustomerStatus.ACTIVE);
+        assertThat(query.page().page()).isEqualTo(1);
+        assertThat(query.page().size()).isEqualTo(5);
+        assertThat(query.page().sortProperty()).isEqualTo("fullName");
+        assertThat(query.page().direction())
+                .isEqualTo(com.example.bankcore.common.pagination.SortDirection.ASC);
+    }
+
+    @Test
+    void shouldRejectAnUnknownSortField() throws Exception {
+        mockMvc.perform(get("/api/v1/customers").param("sort", "PASSWORD"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.details[0].field").value("sort"))
+                .andExpect(jsonPath("$.error.details[0].message").value("has an invalid value"))
+                // The message must not expose internal class names.
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("com.example.bankcore"))));
+    }
+
+    @Test
+    void shouldRejectANegativePageIndex() throws Exception {
+        mockMvc.perform(get("/api/v1/customers").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.details[0].field").value("page"));
     }
 
     @Test
@@ -227,7 +283,7 @@ class CustomerControllerTest {
 
     @Test
     void shouldEchoAnInboundCorrelationId() throws Exception {
-        given(customerService.list()).willReturn(List.of());
+        given(customerService.search(any())).willReturn(new PageResult<>(List.of(), 0, 20, 0));
 
         mockMvc.perform(get("/api/v1/customers").header(CorrelationId.HEADER, "trace-12345"))
                 .andExpect(status().isOk())
@@ -236,12 +292,36 @@ class CustomerControllerTest {
     }
 
     @Test
-    void shouldReplaceAnUntrustedCorrelationId() throws Exception {
-        given(customerService.list()).willReturn(List.of());
+    void shouldReplaceACorrelationIdWithDisallowedCharacters() throws Exception {
+        given(customerService.search(any())).willReturn(new PageResult<>(List.of(), 0, 20, 0));
 
-        mockMvc.perform(get("/api/v1/customers").header(CorrelationId.HEADER, "bad id\nwith newline"))
+        // Passes the HTTP firewall (no control characters) but is not an acceptable id:
+        // it would end up in log lines, so the filter swaps it for a generated one.
+        String hostile = "<script>alert(1)</script>";
+
+        mockMvc.perform(get("/api/v1/customers").header(CorrelationId.HEADER, hostile))
                 .andExpect(status().isOk())
-                .andExpect(header().string(CorrelationId.HEADER,
-                        org.hamcrest.Matchers.not("bad id\nwith newline")));
+                .andExpect(header().string(CorrelationId.HEADER, org.hamcrest.Matchers.not(hostile)))
+                .andExpect(jsonPath("$.traceId").value(org.hamcrest.Matchers.not(hostile)));
+    }
+
+    @Test
+    void shouldReplaceAnOverlongCorrelationId() throws Exception {
+        given(customerService.search(any())).willReturn(new PageResult<>(List.of(), 0, 20, 0));
+
+        String tooLong = "a".repeat(200);
+
+        mockMvc.perform(get("/api/v1/customers").header(CorrelationId.HEADER, tooLong))
+                .andExpect(status().isOk())
+                .andExpect(header().string(CorrelationId.HEADER, org.hamcrest.Matchers.not(tooLong)));
+    }
+
+    @Test
+    void shouldRejectAHeaderWithControlCharactersAsBadRequest() throws Exception {
+        // Defence in depth: Spring Security's StrictHttpFirewall stops this before any
+        // application code runs. It must answer 400, not leak a 500.
+        mockMvc.perform(get("/api/v1/customers").header(CorrelationId.HEADER, "bad id\nwith newline"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("MALFORMED_REQUEST"));
     }
 }

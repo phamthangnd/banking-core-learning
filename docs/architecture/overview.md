@@ -28,10 +28,30 @@ its own `web`/`application`/`persistence` packages. Modules from the target list
 (auth, user, customer, account, ledger, notification, file, audit, masterdata, report, dashboard,
 settings) are created in the phase that first needs them, never up front as empty shells.
 
-## Phase 00 state
+## Module layering
 
-- No database: persistence auto-configuration is excluded in `application.yml` until Phase 02.
-- No authentication: the security baseline denies everything except `/actuator/health`
-  and `/actuator/info`. JWT and RBAC arrive in Phase 03.
-- Domain rules that do not need infrastructure (money arithmetic, transaction status
-  transitions, aggregations, in-memory balances) are already implemented and tested.
+Each feature module is layered, with the dependency arrow pointing inward:
+
+```
+web             controllers and DTOs; no business logic
+  -> application   services holding the business rules; take commands, not web types
+    -> domain        model, value objects, repository ports, business exceptions
+      <- infrastructure   adapters implementing the ports (JPA, later Redis/Kafka/S3)
+```
+
+The repository interface lives in `domain` and its implementation in `infrastructure`, which is
+what let Phase 02 replace the in-memory store with PostgreSQL without changing a business rule
+or an API response.
+
+Cross-cutting building blocks live in `common`: the API envelope and error codes, the global
+exception handler, correlation ids, pagination types and money.
+
+## Current state
+
+- **Persistence**: PostgreSQL, schema owned by Flyway, Hibernate restricted to `validate`.
+  Optimistic locking via `@Version`. Integration tests run on Testcontainers.
+- **No authentication**: the security baseline denies everything except `/actuator/health`,
+  `/actuator/info` and the customer API, which is open until Phase 03 adds JWT and RBAC.
+  The application must not be exposed outside a development machine until then.
+- **Domain rules** that do not need infrastructure (money arithmetic, transaction status
+  transitions, aggregations, in-memory balances) are implemented and tested from Phase 00.

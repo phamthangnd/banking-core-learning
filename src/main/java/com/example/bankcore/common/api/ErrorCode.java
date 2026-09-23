@@ -27,8 +27,8 @@ public enum ErrorCode {
     /** A domain rule rejected an otherwise well-formed request. */
     CUSTOMER_RULE_VIOLATED(Category.BUSINESS_RULE),
 
-    /** Storage capacity limit reached. */
-    STORAGE_LIMIT_REACHED(Category.BUSINESS_RULE),
+    /** Two concurrent writers modified the same record; the loser must retry. */
+    CONCURRENT_MODIFICATION(Category.CONFLICT),
 
     /** Anything unexpected. Details stay in the logs, never in the response. */
     INTERNAL_ERROR(Category.INTERNAL);

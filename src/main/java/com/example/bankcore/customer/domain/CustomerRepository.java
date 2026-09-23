@@ -1,6 +1,7 @@
 package com.example.bankcore.customer.domain;
 
-import java.util.List;
+import com.example.bankcore.common.pagination.PageResult;
+
 import java.util.Optional;
 import java.util.UUID;
 
@@ -8,11 +9,11 @@ import java.util.UUID;
  * Persistence port for customers.
  *
  * <p>The interface lives in the domain and is implemented by infrastructure, so business code
- * depends on an abstraction it owns rather than on a storage technology. Phase 01 stores
- * customers in memory; Phase 02 swaps in a JPA adapter without touching the service.
+ * depends on an abstraction it owns rather than on a storage technology. Phase 01 stored
+ * customers in memory; Phase 02 swapped in a JPA adapter without changing a single business
+ * rule — the point of the port.
  *
- * <p>{@code findAll} is intentionally bounded: an unbounded "give me everything" call is the
- * seed of a production incident. Real pagination arrives with the database in Phase 02
+ * <p>There is no "find everything" method on purpose: reads that can grow are paginated
  * (CLAUDE.md section 5).
  */
 public interface CustomerRepository {
@@ -23,8 +24,6 @@ public interface CustomerRepository {
 
     Optional<Customer> findByEmail(String normalizedEmail);
 
-    /** At most {@code limit} customers, ordered by creation time (oldest first). */
-    List<Customer> findAll(int limit);
-
-    long count();
+    /** One page of customers matching the query, sorted as the query asks. */
+    PageResult<Customer> search(CustomerSearchQuery query);
 }

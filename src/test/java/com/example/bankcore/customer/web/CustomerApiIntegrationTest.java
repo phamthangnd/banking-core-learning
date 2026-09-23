@@ -1,14 +1,15 @@
 package com.example.bankcore.customer.web;
 
-import com.example.bankcore.customer.domain.CustomerRepository;
+import com.example.bankcore.customer.infrastructure.persistence.CustomerJpaRepository;
+import com.example.bankcore.support.PostgresIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,14 +21,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Full stack (controller, validation, service, repository) over real HTTP semantics.
- * Phase 02 replaces the in-memory repository with PostgreSQL behind Testcontainers; this test
- * describes the API contract and should keep passing unchanged.
+ * Full stack over real HTTP semantics and a real PostgreSQL: controller, validation, service,
+ * JPA adapter, Flyway-migrated schema and its constraints.
+ *
+ * <p>The contract asserted here is the same one Phase 01 asserted against the in-memory
+ * repository — swapping the adapter did not change the API, which is the point of the port.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
-class CustomerApiIntegrationTest {
+class CustomerApiIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -36,7 +38,14 @@ class CustomerApiIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private CustomerRepository repository;
+    private CustomerJpaRepository jpaRepository;
+
+    @BeforeEach
+    void clearDatabase() {
+        // Each test starts from a known state. The data lives in a container shared by the
+        // whole JVM, so leftovers from a previous test would make assertions order-dependent.
+        jpaRepository.deleteAll();
+    }
 
     private static String createBody(String email) {
         return """
@@ -87,7 +96,9 @@ class CustomerApiIntegrationTest {
         // list contains it
         mockMvc.perform(get("/api/v1/customers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.metadata.count").isNumber());
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.metadata.totalElements").value(1))
+                .andExpect(jsonPath("$.metadata.page").value(0));
 
         // close
         mockMvc.perform(delete("/api/v1/customers/{id}", id))
@@ -102,7 +113,7 @@ class CustomerApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CLOSED"));
 
-        assertThat(repository.findById(java.util.UUID.fromString(id))).isPresent();
+        assertThat(jpaRepository.findById(java.util.UUID.fromString(id))).isPresent();
 
         mockMvc.perform(put("/api/v1/customers/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)

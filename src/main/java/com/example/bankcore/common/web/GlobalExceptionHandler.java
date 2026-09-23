@@ -7,9 +7,14 @@ import com.example.bankcore.common.api.ValidationError;
 import com.example.bankcore.common.exception.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.web.firewall.RequestRejectedException;
+import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -38,17 +43,21 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /** Bean Validation failures on a request body or parameter object. */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException exception) {
+    /**
+     * Bean Validation failures on a request body, a query-parameter object or a form.
+     *
+     * <p>{@code MethodArgumentNotValidException} extends {@link BindException}, so handling the
+     * parent covers both the {@code @RequestBody} and the {@code @ModelAttribute} cases.
+     */
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(BindException exception) {
         List<ValidationError> details = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new ValidationError(
-                        error.getField(),
-                        error.getDefaultMessage() == null ? "is invalid" : error.getDefaultMessage()))
+                .map(GlobalExceptionHandler::toValidationError)
                 .sorted(Comparator.comparing(ValidationError::field).thenComparing(ValidationError::message))
                 .toList();
 
-        log.debug("Request validation failed with {} field error(s)", details.size());
+        log.debug("Request validation failed with {} field error(s): {}",
+                details.size(), exception.getMessage());
 
         return respond(HttpStatus.BAD_REQUEST,
                 ApiError.validation("Request validation failed", details));
@@ -62,6 +71,22 @@ public class GlobalExceptionHandler {
 
         return respond(HttpStatus.BAD_REQUEST,
                 ApiError.of(ErrorCode.MALFORMED_REQUEST, "Request body could not be parsed"));
+    }
+
+    /**
+     * Spring Security's {@code StrictHttpFirewall} rejected the request before it reached the
+     * application — a header with control characters, a suspicious URL encoding, and similar.
+     *
+     * <p>This is a malformed, usually hostile request, not a server fault: it answers 400, and
+     * it is logged at WARN without a stack trace, because an attacker must not be able to fill
+     * the error log by looping over bad requests.
+     */
+    @ExceptionHandler(RequestRejectedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRejectedRequest(RequestRejectedException exception) {
+        log.warn("Request rejected by the HTTP firewall: {}", exception.getMessage());
+
+        return respond(HttpStatus.BAD_REQUEST,
+                ApiError.of(ErrorCode.MALFORMED_REQUEST, "Request was rejected as malformed"));
     }
 
     /** Path or query parameter of the wrong type, for example a malformed UUID. */
@@ -84,6 +109,38 @@ public class GlobalExceptionHandler {
         return respond(status, ApiError.of(code, exception.getMessage()));
     }
 
+    /**
+     * The database rejected a write that violates a constraint.
+     *
+     * <p>The unique index on {@code email} is the real guarantee: an application-level check can
+     * always be raced by a second concurrent request, and only the database can settle it. The
+     * check in the service is a friendly fast path, not the enforcement.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException exception) {
+        // The driver message can quote column values, so it is logged, never returned.
+        log.warn("Database constraint rejected a write: {}", exception.getMostSpecificCause().getMessage());
+
+        return respond(HttpStatus.CONFLICT,
+                ApiError.of(ErrorCode.CUSTOMER_EMAIL_ALREADY_USED, "Email address is already registered"));
+    }
+
+    /**
+     * Two transactions modified the same row; the second one lost.
+     *
+     * <p>Optimistic locking turns a lost update into a visible 409 instead of silently
+     * overwriting the other writer's change. The client's correct response is to re-read and
+     * retry.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(OptimisticLockingFailureException exception) {
+        log.warn("Optimistic locking conflict: {}", exception.getMessage());
+
+        return respond(HttpStatus.CONFLICT,
+                ApiError.of(ErrorCode.CONCURRENT_MODIFICATION,
+                        "The record was modified concurrently, please retry"));
+    }
+
     @ExceptionHandler(NoHandlerFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(NoHandlerFoundException exception) {
         return respond(HttpStatus.NOT_FOUND,
@@ -97,6 +154,19 @@ public class GlobalExceptionHandler {
 
         return respond(HttpStatus.INTERNAL_SERVER_ERROR,
                 ApiError.of(ErrorCode.INTERNAL_ERROR, "Unexpected server error"));
+    }
+
+    private static ValidationError toValidationError(FieldError error) {
+        // A binding failure is a type-conversion error, and Spring's default message for it
+        // quotes the target class ("failed to convert ... to type com.example...Foo").
+        // That is an internal detail: the client gets a generic message, the log keeps the rest.
+        if (error.isBindingFailure()) {
+            return new ValidationError(error.getField(), "has an invalid value");
+        }
+
+        return new ValidationError(
+                error.getField(),
+                error.getDefaultMessage() == null ? "is invalid" : error.getDefaultMessage());
     }
 
     private static HttpStatus statusFor(ErrorCode code) {

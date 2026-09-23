@@ -5,9 +5,10 @@ import com.example.bankcore.customer.domain.Customer;
 import com.example.bankcore.customer.domain.CustomerEmailAlreadyUsedException;
 import com.example.bankcore.customer.domain.CustomerNotFoundException;
 import com.example.bankcore.customer.domain.CustomerRuleViolationException;
+import com.example.bankcore.common.pagination.PageRequest;
+import com.example.bankcore.common.pagination.SortDirection;
+import com.example.bankcore.customer.domain.CustomerSearchQuery;
 import com.example.bankcore.customer.domain.CustomerStatus;
-import com.example.bankcore.customer.domain.CustomerStorageLimitReachedException;
-import com.example.bankcore.customer.infrastructure.InMemoryCustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -30,14 +31,20 @@ class CustomerServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-15T09:00:00Z");
     private static final LocalDate ADULT_BIRTH_DATE = LocalDate.of(1990, 1, 1);
 
-    private InMemoryCustomerRepository repository;
+    private FakeCustomerRepository repository;
     private CustomerService service;
 
     @BeforeEach
     void setUp() {
-        repository = new InMemoryCustomerRepository();
-        service = new CustomerService(repository, new CustomerProperties(18, 10, 5),
+        repository = new FakeCustomerRepository();
+        // minimum age 18, default page size 20, max page size 5 (small, to test the cap)
+        service = new CustomerService(repository, new CustomerProperties(18, 20, 5),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private static CustomerSearchQuery pageOf(int size) {
+        return new CustomerSearchQuery(null, null, null,
+                new PageRequest(0, size, "createdAt", SortDirection.ASC));
     }
 
     private static CustomerCommands.CreateCustomer createCommand(String email) {
@@ -105,15 +112,6 @@ class CustomerServiceTest {
                     .hasMessageContaining("future");
         }
 
-        @Test
-        void shouldRejectCreationWhenStorageIsFull() {
-            for (int i = 0; i < 10; i++) {
-                service.create(createCommand("customer%d@example.com".formatted(i)));
-            }
-
-            assertThatThrownBy(() -> service.create(createCommand("overflow@example.com")))
-                    .isInstanceOf(CustomerStorageLimitReachedException.class);
-        }
     }
 
     @Nested
@@ -129,12 +127,43 @@ class CustomerServiceTest {
         }
 
         @Test
-        void shouldCapTheListAtTheConfiguredSize() {
+        void shouldCapTheRequestedPageSize() {
             for (int i = 0; i < 8; i++) {
                 service.create(createCommand("customer%d@example.com".formatted(i)));
             }
 
-            assertThat(service.list()).hasSize(5);
+            // The client asks for 50 rows; the configured ceiling is 5.
+            var page = service.search(pageOf(50));
+
+            assertThat(page.content()).hasSize(5);
+            assertThat(page.size()).isEqualTo(5);
+            assertThat(page.totalElements()).isEqualTo(8);
+            assertThat(page.totalPages()).isEqualTo(2);
+            assertThat(page.hasNext()).isTrue();
+        }
+
+        @Test
+        void shouldFilterByStatus() {
+            var active = service.create(createCommand("active@example.com"));
+            var closed = service.create(createCommand("closed@example.com"));
+            service.close(closed.id());
+
+            var page = service.search(new CustomerSearchQuery(null, null, CustomerStatus.ACTIVE,
+                    new PageRequest(0, 5, "createdAt", SortDirection.ASC)));
+
+            assertThat(page.content()).extracting(com.example.bankcore.customer.domain.Customer::id)
+                    .containsExactly(active.id());
+        }
+
+        @Test
+        void shouldReturnAnEmptyPageWhenNothingMatches() {
+            var page = service.search(new CustomerSearchQuery("nobody", null, null,
+                    new PageRequest(0, 5, "createdAt", SortDirection.ASC)));
+
+            assertThat(page.content()).isEmpty();
+            assertThat(page.totalElements()).isZero();
+            assertThat(page.totalPages()).isZero();
+            assertThat(page.hasNext()).isFalse();
         }
     }
 
