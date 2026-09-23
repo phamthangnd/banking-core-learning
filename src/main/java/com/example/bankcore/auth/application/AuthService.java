@@ -3,6 +3,7 @@ package com.example.bankcore.auth.application;
 import com.example.bankcore.audit.application.AuditService;
 import com.example.bankcore.audit.domain.AuditOutcome;
 import com.example.bankcore.auth.config.AuthProperties;
+import com.example.bankcore.common.observability.BankingMetrics;
 import com.example.bankcore.auth.domain.AuthExceptions;
 import com.example.bankcore.auth.domain.PasswordResetToken;
 import com.example.bankcore.auth.domain.PasswordResetTokenRepository;
@@ -54,6 +55,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final SecurityStateRecorder securityStateRecorder;
     private final AuditService audit;
+    private final BankingMetrics metrics;
     private final AuthProperties properties;
     private final Clock clock;
 
@@ -69,6 +71,7 @@ public class AuthService {
                        JwtService jwtService,
                        SecurityStateRecorder securityStateRecorder,
                        AuditService audit,
+                       BankingMetrics metrics,
                        AuthProperties properties,
                        Clock clock) {
         this.users = users;
@@ -82,6 +85,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.securityStateRecorder = securityStateRecorder;
         this.audit = audit;
+        this.metrics = metrics;
         this.properties = properties;
         this.clock = clock;
     }
@@ -136,6 +140,7 @@ public class AuthService {
             log.info("Login failed: unknown username");
             // Audited without the username: the trail must not become a list of guessed accounts.
             audit.record("LOGIN", "USER", null, AuditOutcome.FAILURE, "unknown username");
+            metrics.loginAttempt("unknown_user");
             throw new AuthExceptions.InvalidCredentialsException();
         }
 
@@ -157,12 +162,14 @@ public class AuthService {
             // failure counter that disappears with the failure protects nobody.
             securityStateRecorder.recordFailedLogin(user);
             audit.record("LOGIN", "USER", user.id().toString(), AuditOutcome.FAILURE, "wrong password");
+            metrics.loginAttempt("bad_password");
             throw new AuthExceptions.InvalidCredentialsException();
         }
 
         User authenticated = users.save(user.withSuccessfulLogin(clock.instant()));
         log.info("Login succeeded: id={}", authenticated.id());
         audit.recordSuccess("LOGIN", "USER", authenticated.id().toString());
+        metrics.loginAttempt("success");
 
         return issuePair(authenticated).tokens();
     }

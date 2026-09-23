@@ -8,11 +8,17 @@ spring:
         format_sql: true
     show-sql: false
 
+bankcore:
+  metrics:
+    # The local Prometheus container cannot authenticate, and nothing outside this machine can
+    # reach the port. In production the management port is bound to an internal interface instead.
+    public: true
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always

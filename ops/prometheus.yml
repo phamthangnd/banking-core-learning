@@ -1,0 +1,23 @@
+# Prometheus scrape configuration for the local stack.
+#
+# The application exposes /actuator/prometheus. Scraping is pull-based on purpose: the monitoring
+# system decides when to ask, so a struggling application cannot also flood the monitoring system,
+# and an instance that stops answering is detectable by its absence.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: bankcore
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # host.docker.internal reaches the application running on the host from inside the
+      # container. In a real deployment this is service discovery, not a static list.
+      - targets: ['host.docker.internal:8080']
+        labels:
+          environment: local
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 11
-CURRENT_TASK: observability-performance
+CURRENT_PHASE: 12
+CURRENT_TASK: docker-cicd-production
 STATUS: READY
 BLOCKERS: NONE
 
@@ -24,8 +24,8 @@ BLOCKERS: NONE
 | 08 | Search + Master Data + Import/Export | DONE |
 | 09 | Redis + Kafka + Async Processing | DONE |
 | 10 | Testing + Security Hardening | DONE |
-| 11 | Observability + Performance | READY |
-| 12 | Docker + CI/CD + Production | PENDING |
+| 11 | Observability + Performance | DONE |
+| 12 | Docker + CI/CD + Production | READY |
 | 13 | Microservices Evolution | PENDING |
 
 ## Execution rules
@@ -49,7 +49,7 @@ BLOCKERS: NONE
 - [x] Phase 08 complete
 - [x] Phase 09 complete
 - [x] Phase 10 complete
-- [ ] Phase 11 complete
+- [x] Phase 11 complete
 - [ ] Phase 12 complete
 - [ ] Phase 13 complete
 
@@ -431,3 +431,31 @@ Honest notes:
 
 Deliberately deferred:
 - Virus scanning, signed download URLs, secret rotation and vault integration, a web application firewall, and CAPTCHA on the auth endpoints.
+
+### Phase 11 — Observability + Performance (DONE, 2026-09-23)
+
+Delivered:
+- Structured logging (`logback-spring.xml`): readable lines in `local`/`test`, one JSON object per line everywhere else, with the `traceId` from `CorrelationIdFilter` on every line and shortened stack traces. Hibernate parameter binding pinned to WARN in both the logging config and the production profile, because raising it prints personal data and password hashes.
+- `BankingMetrics`: transaction throughput by type, currency and outcome; rejections folded into bounded reason categories; login outcomes; a latency timer with p50/p95/p99. `OutboxMetrics`: gauges for pending and failed events. Tag cardinality is bounded on purpose, and no metric carries an amount.
+- Actuator: `health`, `info` and `prometheus`; liveness and readiness probes enabled separately so an orchestrator can tell "starting" from "broken". The metrics endpoint requires a token unless `bankcore.metrics.public` is set, which the `local` profile does.
+- Connection pool tuned with reasons: modest maximum, fail-fast timeout, `max-lifetime` under PostgreSQL's idle timeout, and leak detection that logs the stack holding a connection too long.
+- Slow-query logging over a configurable threshold, and optional Hibernate statistics that turn an N+1 suspicion into a number.
+- Prometheus and Grafana added to `docker-compose.yml` with a scrape config and a provisioned datasource.
+- `docs/architecture/observability.md`: how to investigate an incident from one trace id, what is never logged, why cardinality is bounded, and the documented performance considerations for every list and search API.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 391 tests, 0 failures, coverage gate passed.
+- Manual verification on the running application: `/actuator/health/liveness` and `/readiness` both 200; `/actuator/prometheus` returned 401 before the local profile enabled it and 200 after; after a deposit and a failed login the endpoint reported `bankcore_transactions_total{type="DEPOSIT",outcome="posted"} 1.0`, `bankcore_logins_total{outcome="success"} 1.0` and `{outcome="bad_password"} 1.0`, alongside `bankcore_outbox_pending` and the Hikari gauges. Security headers present on every response.
+
+Acceptance criteria:
+- [x] a production incident can be investigated from logs and metrics without exposing secrets — one trace id joins the response, the JSON logs and the audit trail
+- [x] critical list and search APIs have documented performance considerations, with the Phase 02 measurements behind them
+
+Issue found during the phase:
+- The `local` profile's actuator exposure list overrode the base one, so `/actuator/prometheus` was not exposed at all and the endpoint answered 401 rather than serving metrics. Profile-specific lists replace rather than merge.
+
+Deliberately deferred:
+- Alerting rules — `bankcore.outbox.failed > 0` and a rising pending gauge are the first two that should page someone.
+- Provisioned Grafana dashboards beyond the datasource.
+- A distributed tracing backend; the trace id is propagated but there is nowhere to view a span tree.
+- Running the Phase 06 reconciliation reports on a schedule.

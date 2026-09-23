@@ -16,12 +16,24 @@ spring:
     username: ${BANKCORE_DB_USERNAME:bankcore}
     password: ${BANKCORE_DB_PASSWORD:bankcore}
     hikari:
-      # A connection pool is a queue in front of a scarce resource. These are deliberate,
-      # modest defaults; Phase 11 tunes them against measurements rather than guesses.
-      maximum-pool-size: 10
+      # A connection pool is a queue in front of a scarce resource, and bigger is not better:
+      # PostgreSQL handles a small number of busy connections far better than a large number of
+      # mostly-idle ones, and every connection costs a backend process. The rule of thumb is
+      # roughly (2 x cores) + effective spindle count; ten suits a small instance and should be
+      # raised only against a measurement of pool-wait time, which the metrics below expose.
+      maximum-pool-size: ${BANKCORE_DB_POOL_SIZE:10}
       minimum-idle: 2
+      # Fail fast rather than piling up threads waiting for a connection that is not coming.
       connection-timeout: 5000
+      # Below PostgreSQL's own idle timeout, so the pool closes connections before the server does
+      # and clients never get a connection the server has already dropped.
+      max-lifetime: 1500000
+      idle-timeout: 300000
+      # Warns when a connection is held far longer than any request should need: the usual cause
+      # is a leak, and the log points at the stack that took it.
+      leak-detection-threshold: 20000
       pool-name: bankcore-pool
+      register-mbeans: true
 
   jpa:
     hibernate:
@@ -38,6 +50,15 @@ spring:
           batch_size: 50
         order_inserts: true
         order_updates: true
+        # Logs any statement slower than this with its SQL, so a slow query shows up in the log
+        # with the trace id of the request that ran it instead of having to be reproduced.
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: ${BANKCORE_SLOW_QUERY_MS:200}
+        # Counts queries per session; the numbers appear in the statistics endpoint and make an
+        # N+1 problem visible as a count rather than a suspicion.
+        generate_statistics: ${BANKCORE_HIBERNATE_STATISTICS:false}
 
   flyway:
     enabled: true
@@ -92,20 +113,37 @@ management:
   endpoints:
     web:
       exposure:
-        # Only what a load balancer and an operator need. Every extra endpoint is surface:
-        # /env and /configprops print configuration, /heapdump hands over the whole heap.
-        include: health,info
+        # Only what a load balancer, an operator and Prometheus need. Every extra endpoint is
+        # surface: /env and /configprops print configuration, /heapdump hands over the whole heap.
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: never
+      # Separate probes so an orchestrator can tell "starting up" from "broken": a failing
+      # readiness probe takes an instance out of the load balancer, a failing liveness probe
+      # restarts it, and confusing the two produces restart loops during a slow dependency.
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
   info:
     env:
       enabled: true
+  metrics:
+    tags:
+      # Every metric carries the application name, so one dashboard can serve several services.
+      application: ${spring.application.name}
+  observations:
+    key-values:
+      application: ${spring.application.name}
 
 info:
   app:
     name: BankCore
-    phase: "09 - Redis + Kafka + Async Processing"
+    phase: "11 - Observability + Performance"
 
 server:
   port: 8080

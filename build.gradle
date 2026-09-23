@@ -52,6 +52,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
     implementation 'org.springframework.kafka:spring-kafka'
+    // Prometheus scrapes a text endpoint; Micrometer's registry produces it.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+    // Structured logs: one JSON object per line, so a log aggregator can query fields instead of
+    // matching regular expressions against a formatted message.
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.0'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration.
+
+  Two shapes, chosen by profile:
+    * local/test - a readable line for a human watching a terminal.
+    * everything else - one JSON object per line, so an aggregator can query fields instead of
+      running regular expressions over a formatted message. "Show me every ERROR with this
+      traceId" is a field lookup, not a text search.
+
+  The traceId from CorrelationIdFilter is on every line either way, which is what turns "a
+  customer reported a failure at 14:05" into one query.
+-->
+<configuration>
+
+    <springProperty scope="context" name="applicationName" source="spring.application.name" defaultValue="bankcore"/>
+
+    <springProfile name="local,test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!local &amp; !test">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                <providers>
+                    <timestamp>
+                        <timeZone>UTC</timeZone>
+                    </timestamp>
+                    <logLevel/>
+                    <loggerName/>
+                    <threadName/>
+                    <message/>
+                    <!-- The MDC carries traceId; every log line joins its request. -->
+                    <mdc/>
+                    <stackTrace>
+                        <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                            <!-- Enough to diagnose, not enough to fill the log with framework frames. -->
+                            <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                            <maxLength>4096</maxLength>
+                            <shortenedClassNameLength>40</shortenedClassNameLength>
+                            <exclude>^sun\.reflect\..*\.invoke</exclude>
+                            <exclude>^net\.sf\.cglib\.proxy\.MethodProxy\.invoke</exclude>
+                        </throwableConverter>
+                    </stackTrace>
+                    <pattern>
+                        <pattern>{"service":"${applicationName}"}</pattern>
+                    </pattern>
+                </providers>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+    </springProfile>
+
+    <!--
+      Never raise these in production: Hibernate's parameter binding prints the values bound to
+      every statement, which includes personal data and, on the authentication path, password
+      hashes (CLAUDE.md section 4).
+    -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.orm.jdbc.bind" level="WARN"/>
+    <logger name="org.springframework.security" level="WARN"/>
+
+</configuration>

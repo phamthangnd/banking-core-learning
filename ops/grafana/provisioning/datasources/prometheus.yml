@@ -1,0 +1,11 @@
+# Grafana finds Prometheus without anyone clicking through the UI, so a fresh machine comes up
+# with working dashboards.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

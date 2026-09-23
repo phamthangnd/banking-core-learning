@@ -203,5 +203,9 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 - **Phase 10 — done.** CORS policy, security headers, a hardened actuator and production profile,
   a security test suite, dependency scanning and a coverage gate.
   Checklist: [docs/architecture/security-checklist.md](docs/architecture/security-checklist.md).
+- **Phase 11 — done.** Structured JSON logs joined to metrics and the audit trail by one trace id,
+  Micrometer metrics with bounded cardinality, Prometheus and Grafana in the local stack, health
+  probes, connection-pool tuning and slow-query logging.
+  Notes: [docs/architecture/observability.md](docs/architecture/observability.md).
 
 See `PROGRESS.md` for the active phase.

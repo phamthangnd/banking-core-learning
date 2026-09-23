@@ -5,6 +5,7 @@ import com.example.bankcore.common.web.RestAuthenticationEntryPoint;
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.actuate.info.InfoEndpoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -42,6 +43,18 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    /**
+     * Whether the metrics endpoint may be scraped without a token.
+     *
+     * <p>Off by default. Metrics say how much traffic the bank takes, how often logins fail and
+     * how many movements are rejected — operational detail an anonymous caller has no business
+     * reading. It is turned on only where the endpoint is reachable from the monitoring network
+     * alone: locally by the `local` profile, and in production by binding the management port to
+     * an internal interface.
+     */
+    @Value("${bankcore.metrics.public:false}")
+    private boolean metricsPublic;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -84,6 +97,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(EndpointRequest.to(HealthEndpoint.class, InfoEndpoint.class)).permitAll()
+                        .requestMatchers(EndpointRequest.to("prometheus"))
+                        .access((authentication, context) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(metricsPublic))
                         // The only endpoints reachable without a token: the ones used to get one.
                         // Rate limiting, lockout and uniform error messages protect them.
                         .requestMatchers(HttpMethod.POST,

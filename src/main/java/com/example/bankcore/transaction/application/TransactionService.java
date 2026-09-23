@@ -8,6 +8,7 @@ import com.example.bankcore.account.domain.AccountRepository;
 import com.example.bankcore.common.events.application.EventPublisher;
 import com.example.bankcore.common.events.domain.DomainEvents;
 import com.example.bankcore.common.money.Money;
+import com.example.bankcore.common.observability.BankingMetrics;
 import com.example.bankcore.common.pagination.PageResult;
 import com.example.bankcore.transaction.domain.Transaction;
 import com.example.bankcore.transaction.domain.TransactionExceptions;
@@ -61,13 +62,15 @@ public class TransactionService {
     private final AuditService audit;
     private final EventPublisher events;
     private final AccountOwnerLookup ownerLookup;
+    private final BankingMetrics metrics;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactions, AccountRepository accounts,
                               TransactionReferences references,
                               TransactionFailureRecorder failureRecorder,
                               LedgerPosting ledgerPosting, AuditService audit,
-                              EventPublisher events, AccountOwnerLookup ownerLookup, Clock clock) {
+                              EventPublisher events, AccountOwnerLookup ownerLookup,
+                              BankingMetrics metrics, Clock clock) {
         this.transactions = transactions;
         this.accounts = accounts;
         this.references = references;
@@ -76,6 +79,7 @@ public class TransactionService {
         this.audit = audit;
         this.events = events;
         this.ownerLookup = ownerLookup;
+        this.metrics = metrics;
         this.clock = clock;
     }
 
@@ -101,6 +105,7 @@ public class TransactionService {
         log.info("Deposit posted: reference={} accountId={} currency={}",
                 posted.reference(), credited.id(), amount.currency());
         audit.recordSuccess("DEPOSIT", "TRANSACTION", posted.id().toString());
+        metrics.transactionPosted("DEPOSIT", amount.currency());
         publishPosted(posted, credited.id());
         return posted;
     }
@@ -128,6 +133,7 @@ public class TransactionService {
         log.info("Withdrawal posted: reference={} accountId={} currency={}",
                 posted.reference(), debited.id(), amount.currency());
         audit.recordSuccess("WITHDRAWAL", "TRANSACTION", posted.id().toString());
+        metrics.transactionPosted("WITHDRAWAL", amount.currency());
         publishPosted(posted, debited.id());
         return posted;
     }
@@ -191,6 +197,7 @@ public class TransactionService {
         log.info("Transfer posted: reference={} sourceId={} targetId={} currency={}",
                 posted.reference(), debited.id(), credited.id(), amount.currency());
         audit.recordSuccess("TRANSFER", "TRANSACTION", posted.id().toString());
+        metrics.transactionPosted("TRANSFER", amount.currency());
         publishPosted(posted, credited.id());
         return posted;
     }
@@ -366,6 +373,7 @@ public class TransactionService {
         failureRecorder.record(type, amount, sourceId, targetId, description, reason);
         // The audit entry records the attempt and why it was refused, never the amount.
         audit.record(type.name(), "TRANSACTION", null, AuditOutcome.FAILURE, reason);
+        metrics.transactionRejected(type.name(), reason);
         return new TransactionExceptions.TransactionRejectedException(reason);
     }
 
