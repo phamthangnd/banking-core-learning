@@ -39,6 +39,15 @@ public enum ErrorCode {
     /** A money movement was rejected: inactive account, currency mismatch, insufficient funds. */
     TRANSACTION_REJECTED(Category.BUSINESS_RULE),
 
+    /** Debits and credits do not match. A bug, never a user error. */
+    LEDGER_UNBALANCED(Category.INTERNAL),
+
+    /** The same idempotency key was reused with a different request. */
+    IDEMPOTENCY_KEY_CONFLICT(Category.CONFLICT),
+
+    /** A request with this idempotency key is still being processed. */
+    IDEMPOTENT_REQUEST_IN_PROGRESS(Category.CONFLICT),
+
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 

@@ -119,7 +119,8 @@ curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: 
 ```
 
 Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md),
-[accounts](docs/api/account-api.md) and [transactions](docs/api/transaction-api.md).
+[accounts](docs/api/account-api.md), [transactions](docs/api/transaction-api.md) and
+[ledger](docs/api/ledger-api.md).
 
 Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
 bearer token, and each operation additionally requires a permission: a `TELLER` may read
@@ -181,5 +182,10 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   paginated statements.
   API: [docs/api/transaction-api.md](docs/api/transaction-api.md).
   Notes: [docs/learning/phase-05-transactions.md](docs/learning/phase-05-transactions.md).
+- **Phase 06 — done.** Double-entry ledger with reconciliation reports, idempotency keys,
+  row-level locking with a fixed lock order for transfers, reversals through compensating
+  transactions, and concurrency tests that prove money is neither created nor destroyed.
+  API: [docs/api/ledger-api.md](docs/api/ledger-api.md).
+  Notes: [docs/learning/phase-06-ledger-concurrency-idempotency.md](docs/learning/phase-06-ledger-concurrency-idempotency.md).
 
 See `PROGRESS.md` for the active phase.

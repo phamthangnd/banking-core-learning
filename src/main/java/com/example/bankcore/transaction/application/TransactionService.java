@@ -9,6 +9,7 @@ import com.example.bankcore.transaction.domain.Transaction;
 import com.example.bankcore.transaction.domain.TransactionExceptions;
 import com.example.bankcore.transaction.domain.TransactionRepository;
 import com.example.bankcore.transaction.domain.TransactionSearchQuery;
+import com.example.bankcore.transaction.domain.TransactionStatus;
 import com.example.bankcore.transaction.domain.TransactionType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,15 +53,18 @@ public class TransactionService {
     private final AccountRepository accounts;
     private final TransactionReferences references;
     private final TransactionFailureRecorder failureRecorder;
+    private final LedgerPosting ledgerPosting;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactions, AccountRepository accounts,
                               TransactionReferences references,
-                              TransactionFailureRecorder failureRecorder, Clock clock) {
+                              TransactionFailureRecorder failureRecorder,
+                              LedgerPosting ledgerPosting, Clock clock) {
         this.transactions = transactions;
         this.accounts = accounts;
         this.references = references;
         this.failureRecorder = failureRecorder;
+        this.ledgerPosting = ledgerPosting;
         this.clock = clock;
     }
 
@@ -69,7 +73,7 @@ public class TransactionService {
     @PreAuthorize("hasAuthority('transaction:write')")
     public Transaction deposit(TransactionCommands.Deposit command) {
         Instant now = clock.instant();
-        Account account = requireAccount(command.accountId());
+        Account account = lockAccount(command.accountId());
         Money amount = amountOf(command.amount(), command.currency(), account,
                 TransactionType.DEPOSIT, null, account.id(), command.description());
 
@@ -81,6 +85,8 @@ public class TransactionService {
                 TransactionType.DEPOSIT, amount, null, credited.id(),
                 null, credited.balance(), command.description(), now));
 
+        ledgerPosting.post(posted, null, credited.balance(), now);
+
         log.info("Deposit posted: reference={} accountId={} currency={}",
                 posted.reference(), credited.id(), amount.currency());
         return posted;
@@ -91,7 +97,7 @@ public class TransactionService {
     @PreAuthorize("hasAuthority('transaction:write')")
     public Transaction withdraw(TransactionCommands.Withdraw command) {
         Instant now = clock.instant();
-        Account account = requireAccount(command.accountId());
+        Account account = lockAccount(command.accountId());
         Money amount = amountOf(command.amount(), command.currency(), account,
                 TransactionType.WITHDRAWAL, account.id(), null, command.description());
 
@@ -103,6 +109,8 @@ public class TransactionService {
         Transaction posted = transactions.save(Transaction.posted(UUID.randomUUID(), references.next(),
                 TransactionType.WITHDRAWAL, amount, debited.id(), null,
                 debited.balance(), null, command.description(), now));
+
+        ledgerPosting.post(posted, debited.balance(), null, now);
 
         log.info("Withdrawal posted: reference={} accountId={} currency={}",
                 posted.reference(), debited.id(), amount.currency());
@@ -129,8 +137,18 @@ public class TransactionService {
                     "Source and target accounts must differ");
         }
 
-        Account source = requireAccount(command.sourceAccountId());
-        Account target = requireAccount(command.targetAccountId());
+        // Locks are taken in a fixed order (by id), not in the order the caller named the
+        // accounts. Two simultaneous transfers A->B and B->A would otherwise each hold the lock
+        // the other needs, and deadlock; ordering makes that impossible.
+        Account source;
+        Account target;
+        if (command.sourceAccountId().compareTo(command.targetAccountId()) < 0) {
+            source = lockAccount(command.sourceAccountId());
+            target = lockAccount(command.targetAccountId());
+        } else {
+            target = lockAccount(command.targetAccountId());
+            source = lockAccount(command.sourceAccountId());
+        }
 
         Money amount = amountOf(command.amount(), command.currency(), source, TransactionType.TRANSFER,
                 source.id(), target.id(), command.description());
@@ -153,9 +171,71 @@ public class TransactionService {
                 TransactionType.TRANSFER, amount, debited.id(), credited.id(),
                 debited.balance(), credited.balance(), command.description(), now));
 
+        ledgerPosting.post(posted, debited.balance(), credited.balance(), now);
+
         log.info("Transfer posted: reference={} sourceId={} targetId={} currency={}",
                 posted.reference(), debited.id(), credited.id(), amount.currency());
         return posted;
+    }
+
+    /**
+     * Reverses a posted transaction by posting its mirror image.
+     *
+     * <p>The original is never edited — it is marked REVERSED and a new transaction moves the
+     * money back. That is what "corrections use compensating transactions" means (CLAUDE.md
+     * section 3): the history keeps both the mistake and the fix, and a statement can be
+     * reconciled afterwards.
+     *
+     * <p>The reversal can itself fail — the money may already have been spent — and then nothing
+     * happens at all, which is the honest outcome.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('transaction:write')")
+    public Transaction reverse(UUID transactionId, String reason) {
+        Transaction original = transactions.findById(transactionId)
+                .orElseThrow(() -> new TransactionExceptions.TransactionNotFoundException(transactionId));
+
+        if (!original.isPosted()) {
+            throw new TransactionExceptions.TransactionRejectedException(
+                    "Only a posted transaction can be reversed; this one is " + original.status());
+        }
+
+        Instant now = clock.instant();
+        Money amount = original.amount();
+        String description = "Reversal of %s%s".formatted(original.reference(),
+                reason == null || reason.isBlank() ? "" : ": " + reason);
+
+        // The mirror image: whatever was debited is credited and the other way round.
+        Transaction compensating = switch (original.type()) {
+            case DEPOSIT -> withdrawFor(original.targetAccountId(), amount, description);
+            case WITHDRAWAL -> depositFor(original.sourceAccountId(), amount, description);
+            case TRANSFER -> transferFor(original.targetAccountId(), original.sourceAccountId(),
+                    amount, description);
+        };
+
+        transactions.save(original.withStatus(TransactionStatus.REVERSED, now));
+        log.info("Transaction reversed: original={} compensating={}",
+                original.reference(), compensating.reference());
+
+        return compensating;
+    }
+
+    // These three call public methods on this same bean. Spring's proxy is bypassed by a
+    // self-invocation, so the nested @PreAuthorize and @Transactional do not re-apply — which is
+    // what is wanted here: the caller has already been authorized for the reversal, and the
+    // compensating movement must run inside the reversal's own transaction, not a new one.
+
+    private Transaction depositFor(UUID accountId, Money amount, String description) {
+        return deposit(new TransactionCommands.Deposit(accountId, amount.amount(), amount.currency(), description));
+    }
+
+    private Transaction withdrawFor(UUID accountId, Money amount, String description) {
+        return withdraw(new TransactionCommands.Withdraw(accountId, amount.amount(), amount.currency(), description));
+    }
+
+    private Transaction transferFor(UUID sourceId, UUID targetId, Money amount, String description) {
+        return transfer(new TransactionCommands.Transfer(sourceId, targetId, amount.amount(),
+                amount.currency(), description));
     }
 
     @PreAuthorize("hasAuthority('transaction:read')")
@@ -178,6 +258,18 @@ public class TransactionService {
 
     private Account requireAccount(UUID id) {
         return accounts.findById(id).orElseThrow(() -> new AccountExceptions.AccountNotFoundException(id));
+    }
+
+    /**
+     * Loads an account with a row lock held until this transaction ends.
+     *
+     * <p>Every balance change goes through here. Two concurrent movements on the same account
+     * are serialised by the database instead of racing, which is what makes the "no lost update"
+     * guarantee real rather than probabilistic.
+     */
+    private Account lockAccount(UUID id) {
+        return accounts.findByIdForUpdate(id)
+                .orElseThrow(() -> new AccountExceptions.AccountNotFoundException(id));
     }
 
     private Money amountOf(BigDecimal amount, String currency, Account account, TransactionType type,

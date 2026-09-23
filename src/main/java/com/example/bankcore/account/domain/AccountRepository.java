@@ -12,6 +12,17 @@ public interface AccountRepository {
 
     Optional<Account> findById(UUID id);
 
+    /**
+     * Loads an account and holds a row lock until the surrounding transaction ends.
+     *
+     * <p>Used on the paths that change a balance. Optimistic locking detects a conflict only
+     * after the work is done, and under contention that means a stream of retries; a row lock
+     * makes the second writer wait for the first instead. Callers that lock more than one
+     * account must acquire the locks in a fixed order, or two transfers in opposite directions
+     * will deadlock.
+     */
+    Optional<Account> findByIdForUpdate(UUID id);
+
     Optional<Account> findByAccountNumber(String accountNumber);
 
     PageResult<Account> search(AccountSearchQuery query);

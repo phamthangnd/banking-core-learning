@@ -50,6 +50,12 @@ public class JpaAccountRepository implements AccountRepository {
     }
 
     @Override
+    public Optional<Account> findByIdForUpdate(UUID id) {
+        Objects.requireNonNull(id, "id must not be null");
+        return jpaRepository.findByIdForUpdate(id).map(AccountEntity::toDomain);
+    }
+
+    @Override
     public Optional<Account> findByAccountNumber(String accountNumber) {
         Objects.requireNonNull(accountNumber, "accountNumber must not be null");
         return jpaRepository.findByAccountNumber(accountNumber).map(AccountEntity::toDomain);

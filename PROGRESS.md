@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 06
-CURRENT_TASK: ledger-concurrency-idempotency
+CURRENT_PHASE: 07
+CURRENT_TASK: files-notifications-audit
 STATUS: READY
 BLOCKERS: NONE
 
@@ -19,8 +19,8 @@ BLOCKERS: NONE
 | 03 | Authentication + JWT + RBAC | DONE |
 | 04 | Customer + Account Management | DONE |
 | 05 | Core Banking Transactions | DONE |
-| 06 | Ledger + Concurrency + Idempotency | READY |
-| 07 | Files + Notifications + Audit | PENDING |
+| 06 | Ledger + Concurrency + Idempotency | DONE |
+| 07 | Files + Notifications + Audit | READY |
 | 08 | Search + Master Data + Import/Export | PENDING |
 | 09 | Redis + Kafka + Async Processing | PENDING |
 | 10 | Testing + Security Hardening | PENDING |
@@ -44,7 +44,7 @@ BLOCKERS: NONE
 - [x] Phase 03 complete
 - [x] Phase 04 complete
 - [x] Phase 05 complete
-- [ ] Phase 06 complete
+- [x] Phase 06 complete
 - [ ] Phase 07 complete
 - [ ] Phase 08 complete
 - [ ] Phase 09 complete
@@ -268,3 +268,41 @@ Deliberately deferred:
 - Idempotency keys, the double-entry ledger, the locking strategy and concurrency tests -> Phase 06.
 - A reversal endpoint (the status and the database transition exist; the compensating-transaction flow is Phase 06).
 - Scheduled or future-dated transactions, fees, interest and foreign exchange.
+
+### Phase 06 — Ledger + Concurrency + Idempotency (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V8`): `ledger_entries` (balanced pairs, positive amounts with an explicit direction, exactly one of an account or a system account per entry, append-only triggers on UPDATE and DELETE) and `idempotency_keys` with a unique index on `(scope, key)`.
+- `ledger` module: `LedgerEntry`, `SystemAccount` (CASH/CLEARING for the bank's side of a deposit or withdrawal), `LedgerEntries.requireBalanced` (the invariant, per currency), port and JPA adapter with database-side totals, `LedgerService` (reconciliation) and `LedgerController`.
+- `LedgerPosting` turns every posted transaction into its balanced pair; `LedgerRepository.append` checks the invariant, so no caller can bypass it.
+- Idempotency in `common/idempotency`: record, status, port, `RequestFingerprint`, JPA adapter and `IdempotentTransactions`. Claim commits immediately via `INSERT … ON CONFLICT DO NOTHING`, replay returns the original transaction, a key reused with a different request is a 409, and a failed attempt releases its key.
+- Concurrency: `AccountRepository.findByIdForUpdate` (`SELECT … FOR UPDATE`) on every balance-changing path, with transfers acquiring both locks in id order so opposite-direction transfers cannot deadlock. Optimistic `@Version` stays for the paths that do not lock.
+- Reversal: `POST /transactions/{id}/reverse` posts the mirror image as a new transaction and marks the original REVERSED, which is the compensating-transaction rule from CLAUDE.md section 3.
+- Documentation: `docs/api/ledger-api.md`, `docs/learning/phase-06-ledger-concurrency-idempotency.md`, updated `docs/api/transaction-api.md` and README.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 324 tests, 0 failures, 0 skipped, no compiler warnings. JaCoCo: 92.9% instruction, 80.4% branch.
+- `ConcurrencyAndIdempotencyIntegrationTest` runs real threads against a real PostgreSQL: 16 concurrent deposits lose nothing; 20 concurrent withdrawals against a balance of 100 produce exactly 10 successes and a balance of 0; 20 opposite-direction transfers all succeed with the total conserved; concurrent work leaves the ledger balanced and both accounts reconciled; a repeated request with the same idempotency key returns the same transaction id and moves the money once; the same key with a different amount is a 409; 8 concurrent retries produce exactly one effect; a failed request releases its key; a rejected withdrawal writes no ledger entries and leaves the balance untouched; a reversal returns the money and leaves the ledger balanced.
+- `LedgerEntriesTest` covers the invariant including the case where equal numbers in different currencies must not net off.
+- Manual verification: the same idempotency key twice returned the same transaction id and reference, the same key with a different amount returned `IDEMPOTENCY_KEY_CONFLICT`, whole-ledger reconciliation reported balanced, a reversal produced a compensating transaction and left the original REVERSED with the ledger still balanced, and an account created after the ledger existed reconciled exactly (stored 700.0 = derived 700.0). `UPDATE`/`DELETE` on `ledger_entries` were refused with "ledger entries are append-only".
+
+Acceptance criteria:
+- [x] concurrent transfer tests pass
+- [x] duplicate request tests pass
+- [x] ledger balances reconcile
+- [x] failed transactions leave no partial state
+
+Invariants verified:
+- [x] total debits == total credits (per currency, in the domain and in the reconciliation report)
+- [x] one idempotency key cannot create multiple financial effects
+- [x] concurrent updates cannot corrupt balances
+
+Issue found and fixed during the phase:
+- The first idempotency claim caught `DataIntegrityViolationException` inside its own transaction. Catching it does not clear the rollback-only mark the failed statement leaves, so the commit afterwards threw `UnexpectedRollbackException`. Replaced with `INSERT … ON CONFLICT DO NOTHING`, which never raises.
+
+Known gap, recorded honestly:
+- The ledger starts at Phase 06, so balances created in Phase 05 do not reconcile against it. The manual check confirmed both halves of this: the pre-ledger accounts show a mismatch, and an account created afterwards reconciles exactly. A production migration would post opening-balance entries; inventing that history here would have been worse than recording the gap.
+
+Deliberately deferred:
+- A scheduled reconciliation job and alerting on a mismatch -> Phase 11.
+- Fee, interest and suspense system accounts.

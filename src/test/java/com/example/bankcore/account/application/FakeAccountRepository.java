@@ -32,6 +32,12 @@ class FakeAccountRepository implements AccountRepository {
     }
 
     @Override
+    public Optional<Account> findByIdForUpdate(UUID id) {
+        // A single-threaded fake has nothing to lock against.
+        return findById(id);
+    }
+
+    @Override
     public Optional<Account> findByAccountNumber(String accountNumber) {
         return accounts.values().stream()
                 .filter(account -> account.accountNumber().equals(accountNumber))

@@ -114,15 +114,36 @@ hand.
 | 409 | `CONCURRENT_MODIFICATION` | Two writers changed the same account |
 | 422 | `TRANSACTION_REJECTED` | Inactive account, currency mismatch, insufficient funds, cross-currency transfer |
 
+## Idempotency
+
+Movements accept an optional `Idempotency-Key` header.
+
+| Situation | Result |
+|---|---|
+| Same key, same request, first attempt finished | The original transaction is returned |
+| Same key, **different** request | `409 IDEMPOTENCY_KEY_CONFLICT` |
+| Same key while the first attempt is still running | `409 IDEMPOTENT_REQUEST_IN_PROGRESS` |
+| Same key after a rejected attempt | Allowed; the key is released when an attempt fails |
+| No key | Every request is its own movement |
+
+Refusing the second case matters: answering it with the earlier result would tell the caller that
+the request it just sent had been carried out.
+
+## Reversal
+
+`POST /api/v1/transactions/{id}/reverse` posts the mirror image as a **new** transaction and marks
+the original `REVERSED`. Nothing is edited: the history keeps both the mistake and the correction.
+Only a posted transaction can be reversed, and the reversal itself can fail — if the money has
+already been spent, nothing happens at all.
+
+## Ledger
+
+Every posted movement writes a balanced pair of ledger entries; see
+[ledger-api.md](ledger-api.md) for the entries and the reconciliation reports.
+
 ## Known gaps, by design
 
-- **Not idempotent.** Repeating a request posts a second transaction. Idempotency keys are
-  Phase 06; until then a client must not retry blindly.
-- **No ledger entries yet.** Balances move and the movement is recorded, but the double-entry
-  ledger where total debits equal total credits arrives in Phase 06.
-- **No reversal endpoint yet.** The status exists and the database allows the transition; the
-  compensating-transaction flow is Phase 06.
-- **Concurrency is only protected by optimistic locking** on accounts. A concurrent transfer
-  that loses the race fails with 409 rather than corrupting a balance, but the designed locking
-  strategy and its tests are Phase 06.
-- No scheduled or future-dated transactions, no fees, no interest.
+- **The ledger starts at Phase 06.** Balances created before it exists do not reconcile against
+  it. A production migration would post opening-balance entries; this project records the gap
+  instead of inventing history.
+- No scheduled or future-dated transactions, no fees, no interest, no foreign exchange.

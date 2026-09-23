@@ -80,6 +80,12 @@ public final class TransactionRequests {
         }
     }
 
+    /** @param reason free-text note recorded in the compensating transaction's description */
+    public record Reverse(
+            @Size(max = 200, message = "must be at most 200 characters") String reason
+    ) {
+    }
+
     /** Query parameters of the history endpoints. */
     public record SearchTransactions(
             @Min(value = 0, message = "must not be negative") Integer page,
