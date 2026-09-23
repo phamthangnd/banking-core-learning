@@ -12,6 +12,8 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
@@ -147,6 +149,24 @@ public class GlobalExceptionHandler {
                 ApiError.of(ErrorCode.CUSTOMER_NOT_FOUND, "Resource not found"));
     }
 
+    /**
+     * A {@code @PreAuthorize} check on a service method refused the call.
+     *
+     * <p>Denials raised inside the filter chain are handled by {@code RestAccessDeniedHandler};
+     * this one comes from method security, travels up through the controller, and would
+     * otherwise be swallowed by the catch-all below and reported as a 500 — an authorization
+     * failure disguised as a server fault, which is both wrong and alarming.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException exception) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        log.info("Access denied by method security: principal={}",
+                authentication == null ? "anonymous" : authentication.getName());
+
+        return respond(HttpStatus.FORBIDDEN,
+                ApiError.of(ErrorCode.ACCESS_DENIED, "You do not have permission to perform this action"));
+    }
+
     /** Anything unforeseen: logged in full, reported as an opaque 500. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
@@ -175,6 +195,9 @@ public class GlobalExceptionHandler {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case CONFLICT -> HttpStatus.CONFLICT;
             case BUSINESS_RULE -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case UNAUTHENTICATED -> HttpStatus.UNAUTHORIZED;
+            case FORBIDDEN -> HttpStatus.FORBIDDEN;
+            case RATE_LIMITED -> HttpStatus.TOO_MANY_REQUESTS;
             case INTERNAL -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }

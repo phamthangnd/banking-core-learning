@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+// The customer API requires authentication from Phase 03 on. These tests are about the customer
+// contract, so they run as a user that holds the needed permissions; the token mechanics and the
+// permission checks themselves are covered by the auth tests.
+@WithMockUser(username = "22222222-2222-2222-2222-222222222222",
+        authorities = {"customer:read", "customer:write", "customer:close"})
 class CustomerApiIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired

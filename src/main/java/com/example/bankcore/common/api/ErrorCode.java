@@ -30,6 +30,38 @@ public enum ErrorCode {
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 
+    /** The addressed user does not exist. */
+    USER_NOT_FOUND(Category.NOT_FOUND),
+
+    /** Username or email already registered. */
+    USER_ALREADY_EXISTS(Category.CONFLICT),
+
+    /**
+     * Authentication failed.
+     *
+     * <p>Deliberately one code for "no such user", "wrong password" and "wrong token": telling
+     * the two apart hands an attacker a user-enumeration oracle.
+     */
+    INVALID_CREDENTIALS(Category.UNAUTHENTICATED),
+
+    /** The account is locked or disabled, so credentials cannot be used at all. */
+    ACCOUNT_NOT_ACTIVE(Category.FORBIDDEN),
+
+    /** No or invalid bearer token on a protected endpoint. */
+    AUTHENTICATION_REQUIRED(Category.UNAUTHENTICATED),
+
+    /** Authenticated, but lacking the required permission. */
+    ACCESS_DENIED(Category.FORBIDDEN),
+
+    /** Refresh or password-reset token is unknown, expired, used or revoked. */
+    INVALID_TOKEN(Category.UNAUTHENTICATED),
+
+    /** A rejected password: too short, too common, or the same as the current one. */
+    WEAK_PASSWORD(Category.BUSINESS_RULE),
+
+    /** Too many attempts in the rate-limiting window. */
+    TOO_MANY_REQUESTS(Category.RATE_LIMITED),
+
     /** Anything unexpected. Details stay in the logs, never in the response. */
     INTERNAL_ERROR(Category.INTERNAL);
 
@@ -49,6 +81,9 @@ public enum ErrorCode {
         NOT_FOUND,
         CONFLICT,
         BUSINESS_RULE,
+        UNAUTHENTICATED,
+        FORBIDDEN,
+        RATE_LIMITED,
         INTERNAL
     }
 }

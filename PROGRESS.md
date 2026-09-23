@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 03
-CURRENT_TASK: authentication-jwt-rbac
+CURRENT_PHASE: 04
+CURRENT_TASK: customer-account-management
 STATUS: READY
 BLOCKERS: NONE
 
@@ -16,8 +16,8 @@ BLOCKERS: NONE
 | 00 | Project Bootstrap & Java Comeback | DONE |
 | 01 | Spring Boot Foundation | DONE |
 | 02 | PostgreSQL + JPA + Flyway | DONE |
-| 03 | Authentication + JWT + RBAC | READY |
-| 04 | Customer + Account Management | PENDING |
+| 03 | Authentication + JWT + RBAC | DONE |
+| 04 | Customer + Account Management | READY |
 | 05 | Core Banking Transactions | PENDING |
 | 06 | Ledger + Concurrency + Idempotency | PENDING |
 | 07 | Files + Notifications + Audit | PENDING |
@@ -41,7 +41,7 @@ BLOCKERS: NONE
 - [x] Phase 00 complete
 - [x] Phase 01 complete
 - [x] Phase 02 complete
-- [ ] Phase 03 complete
+- [x] Phase 03 complete
 - [ ] Phase 04 complete
 - [ ] Phase 05 complete
 - [ ] Phase 06 complete
@@ -159,3 +159,44 @@ Known gap, still open:
 Deliberately deferred:
 - Keyset pagination for deep pages, and trigram/full-text search for name lookups -> Phase 08.
 - JWT, refresh-token rotation, RBAC, rate limiting -> Phase 03.
+
+### Phase 03 — Authentication + JWT + RBAC (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V2`): `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `refresh_tokens`, `password_reset_tokens`, with unique indexes, check constraints and a self-referencing rotation chain (`ON DELETE SET NULL`). `V3` seeds the role/permission catalogue (ADMIN, OFFICER, TELLER, CUSTOMER).
+- `user` module: immutable `User` domain record (normalisation, lockout state, authorities derived from roles), `Role`, ports and JPA adapters. Lookups on the authentication path use `@EntityGraph` to fetch roles and permissions in one query.
+- `auth` module: `JwtService` (HS256, 15-min access tokens carrying `sub`/`iss`/`jti`/`authorities`), `SecureTokenGenerator` (256-bit opaque refresh and reset tokens), `TokenHasher` (SHA-256 storage), `PasswordPolicy`, `AuthService` with register/login/refresh/logout/logout-all/change/forgot/reset, `SecurityStateRecorder` (REQUIRES_NEW), `AuthRateLimiter`, `AdminBootstrap`, JPA adapters and the `AuthController`.
+- Security: deny-by-default filter chain (`anyRequest().authenticated()`), only the auth endpoints and actuator health/info are public; `@EnableMethodSecurity` with `@PreAuthorize` permission checks on every `CustomerService` method; `RestAuthenticationEntryPoint` and `RestAccessDeniedHandler` so 401/403 use the same response envelope; BCrypt via a delegating encoder.
+- Refresh-token lifecycle: single use, rotated on every refresh, stored hashed, chain recorded; presenting a rotated token revokes every session of that user. Password change and reset revoke all sessions.
+- Anti-enumeration: identical response for unknown user and wrong password (with a dummy hash to match timing), one message for username/email conflicts, 202 for every forgot-password request, 204 for logout of an unknown token.
+- Lockout (5 failures → 15 min, self-expiring) and per-client/per-endpoint rate limiting (10/min).
+- Secret management: `BANKCORE_JWT_SECRET` has no default — the application refuses to start without it outside local/test, where a random key is generated per run. No seeded user; the first administrator is created once from `BANKCORE_BOOTSTRAP_ADMIN_PASSWORD`.
+- Documentation: `docs/api/auth-api.md`, `docs/learning/phase-03-auth-jwt-rbac.md`, updated `docs/api/customer-api.md`, `docs/architecture/overview.md` and README.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 192 tests, 0 failures, 0 skipped, no compiler warnings. JaCoCo: 93.9% instruction, 81.0% branch.
+- Test layers: `AuthFlowIntegrationTest` (20 tests: registration, login, lockout, protected endpoints, forged/garbage tokens, refresh rotation, reuse detection, logout), `AuthorizationIntegrationTest` (RBAC per role, both directions), `PasswordFlowIntegrationTest` (reset token single use, invalidation, session revocation, change-password rules), plus unit tests for `PasswordPolicy`, `TokenHasher`, `RefreshToken`, `AuthRateLimiter`, `JwtConfig` and `AdminBootstrap`.
+- Manual verification against the running application: Flyway applied V2 and V3; bootstrap created the administrator; unauthenticated `/api/v1/customers` returned 401; a CUSTOMER-role token returned 403 while an ADMIN token returned 201; the decoded JWT carried exactly the seeded authorities; refresh rotated the token, replay returned 401 and revoked the successor session too; rate limiting returned 429 after 10 attempts and recovered after the window; five failed logins locked the account and the correct password then returned `ACCOUNT_NOT_ACTIVE`; password change invalidated the old password. Stored password hashes are BCrypt, stored token hashes are opaque.
+- Log hygiene checked explicitly: grepping the application log for every password, JWT, refresh token and signing key used during the session returned zero hits.
+
+Acceptance criteria:
+- [x] protected endpoints require valid authentication
+- [x] role/permission checks work
+- [x] refresh token lifecycle is secure
+- [x] password is never stored plaintext
+- [x] security tests pass
+
+Bugs found and fixed during the phase (each caught by a test, not by inspection):
+- A failed login incremented the counter inside the transaction that the thrown exception then rolled back, so accounts never locked. Fixed with `SecurityStateRecorder` using `REQUIRES_NEW` in a separate bean (a self-invocation would have been a silent no-op).
+- The same rollback discarded the session revocation after refresh-token reuse detection.
+- `AccessDeniedException` from `@PreAuthorize` reached the controller and was reported as 500; now mapped to 403.
+- Repository adapters performed read-modify-write across several Spring Data calls without a transaction, which broke lazy loading of `roles.permissions` outside a service transaction and was a lost-update hazard. All adapters are now transactional.
+- `ddl-auto=validate` rejected `CHAR(64)` against the `String` mapping; the migration now uses `VARCHAR(64)`.
+
+Known gaps, recorded deliberately:
+- Access tokens cannot be revoked before they expire (15 minutes); revocation semantics live on the refresh token.
+- Rate limiting is per instance (heap-based) — Redis in Phase 09.
+- `X-Forwarded-For` is ignored when identifying a client; trusted-proxy configuration is Phase 12.
+- Symmetric HS256 signing; asymmetric keys when a second service must verify tokens (Phase 13).
+- Password-reset tokens are not delivered anywhere yet (the port logs only the user id) — email in Phase 07.
+- Optional items from the phase specification not implemented: TOTP/OTP 2FA and OAuth2 social login.

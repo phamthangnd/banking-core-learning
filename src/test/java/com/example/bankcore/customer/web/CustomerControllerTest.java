@@ -18,6 +18,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -46,9 +48,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * envelope and the exception-to-status mapping rather than business rules.
  */
 @WebMvcTest(CustomerController.class)
-@Import({SecurityConfig.class, GlobalExceptionHandler.class, CorrelationIdFilter.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class, CorrelationIdFilter.class,
+        com.example.bankcore.common.web.RestAuthenticationEntryPoint.class,
+        com.example.bankcore.common.web.RestAccessDeniedHandler.class})
 @EnableConfigurationProperties(CustomerProperties.class)
 @ActiveProfiles("test")
+// Every test in this class acts as a user holding the customer permissions. Authorization
+// itself is verified end to end in CustomerAuthorizationIntegrationTest, against real tokens.
+@WithMockUser(username = "11111111-1111-1111-1111-111111111111",
+        authorities = {"customer:read", "customer:write", "customer:close"})
 class CustomerControllerTest {
 
     private static final UUID ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
@@ -59,6 +67,14 @@ class CustomerControllerTest {
 
     @MockitoBean
     private CustomerService customerService;
+
+    /** The web slice does not build the real decoder; the security chain still requires the bean. */
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter
+            jwtAuthenticationConverter;
 
     private static Customer customer() {
         return Customer.register(ID, "Alice Nguyen", "alice@example.com", "+84 90 123 4567",

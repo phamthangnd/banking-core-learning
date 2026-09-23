@@ -11,6 +11,7 @@ import com.example.bankcore.customer.domain.CustomerRuleViolationException;
 import com.example.bankcore.customer.domain.CustomerSearchQuery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,12 @@ import java.util.UUID;
  *   <li>a birth date in the future is rejected</li>
  *   <li>a closed customer is read-only</li>
  * </ol>
+ *
+ * <p>Authorization is declared here as well as in the security configuration. The path rules in
+ * {@code SecurityConfig} say "you must be authenticated"; the {@code @PreAuthorize} annotations
+ * below say which permission each operation needs, and they apply to every caller — a future
+ * batch import or message consumer included, not only to requests that arrive through the
+ * controller (CLAUDE.md section 4).
  *
  * <p>Transactions are declared here, not in the controller or the repository: the service method
  * is the unit of work. Reads are marked {@code readOnly}, which lets the driver and Hibernate
@@ -61,6 +68,7 @@ public class CustomerService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('customer:write')")
     public Customer create(CustomerCommands.CreateCustomer command) {
         String email = Customer.normalizeEmail(command.email());
 
@@ -77,6 +85,7 @@ public class CustomerService {
         return saved;
     }
 
+    @PreAuthorize("hasAuthority('customer:read')")
     public Customer getById(UUID id) {
         return repository.findById(id).orElseThrow(() -> new CustomerNotFoundException(id));
     }
@@ -87,6 +96,7 @@ public class CustomerService {
      * <p>The requested page size is capped at {@code bankcore.customer.max-page-size}: a client
      * asking for a million rows must not be able to decide how much memory the server allocates.
      */
+    @PreAuthorize("hasAuthority('customer:read')")
     public PageResult<Customer> search(CustomerSearchQuery query) {
         PageRequest requested = query.page();
         int cappedSize = Math.min(requested.size(), properties.maxPageSize());
@@ -101,6 +111,7 @@ public class CustomerService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('customer:write')")
     public Customer update(UUID id, CustomerCommands.UpdateCustomer command) {
         Customer existing = getById(id);
 
@@ -127,6 +138,7 @@ public class CustomerService {
      * which makes the operation idempotent (CLAUDE.md section 3).
      */
     @Transactional
+    @PreAuthorize("hasAuthority('customer:close')")
     public Customer close(UUID id) {
         Customer existing = getById(id);
 

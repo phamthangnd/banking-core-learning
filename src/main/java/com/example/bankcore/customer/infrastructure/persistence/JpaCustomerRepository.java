@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -22,6 +23,7 @@ import java.util.UUID;
  * context. The service above it sees only domain records and the module's own page types.
  */
 @Repository
+@Transactional(readOnly = true)
 public class JpaCustomerRepository implements CustomerRepository {
 
     private final CustomerJpaRepository jpaRepository;
@@ -39,6 +41,7 @@ public class JpaCustomerRepository implements CustomerRepository {
      * instead would reset the version and defeat optimistic locking.
      */
     @Override
+    @Transactional
     public Customer save(Customer customer) {
         Objects.requireNonNull(customer, "customer must not be null");
 

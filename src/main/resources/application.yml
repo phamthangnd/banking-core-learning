@@ -70,7 +70,7 @@ management:
 info:
   app:
     name: BankCore
-    phase: "02 - PostgreSQL + JPA + Flyway"
+    phase: "03 - Authentication + JWT + RBAC"
 
 server:
   port: 8080
@@ -81,6 +81,28 @@ bankcore:
     minimum-age-years: 18
     default-page-size: 20
     max-page-size: 100
+
+  auth:
+    jwt:
+      # No default on purpose. Outside local/test the application refuses to start without it;
+      # locally a random key is generated for the run. A committed secret is a public secret.
+      secret: ${BANKCORE_JWT_SECRET:}
+      issuer: bankcore
+      # Short, because an access token is not checked against the database on every request.
+      ttl: 15m
+    refresh-token:
+      # Long-lived but single-use: every refresh rotates it and reuse revokes the whole chain.
+      ttl: 30d
+    password-reset:
+      ttl: 30m
+    lockout:
+      max-attempts: 5
+      duration: 15m
+    rate-limit:
+      max-attempts: 10
+      window: 1m
+    password:
+      min-length: 12
 
 logging:
   # Every log line carries the correlation id set by CorrelationIdFilter, so a response's

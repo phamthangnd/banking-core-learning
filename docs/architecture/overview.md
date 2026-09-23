@@ -50,8 +50,10 @@ exception handler, correlation ids, pagination types and money.
 
 - **Persistence**: PostgreSQL, schema owned by Flyway, Hibernate restricted to `validate`.
   Optimistic locking via `@Version`. Integration tests run on Testcontainers.
-- **No authentication**: the security baseline denies everything except `/actuator/health`,
-  `/actuator/info` and the customer API, which is open until Phase 03 adds JWT and RBAC.
-  The application must not be exposed outside a development machine until then.
+- **Authentication and authorization**: JWT access tokens (15 min) plus stored, hashed, rotating
+  refresh tokens (30 days) with reuse detection. The security baseline denies by default:
+  `/actuator/health`, `/actuator/info` and the auth endpoints are public, everything else needs a
+  bearer token, and each service operation additionally requires a permission via
+  `@PreAuthorize`. Roles and permissions are seeded by migration `V3`.
 - **Domain rules** that do not need infrastructure (money arithmetic, transaction status
   transitions, aggregations, in-memory balances) are implemented and tested from Phase 00.

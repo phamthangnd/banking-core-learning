@@ -5,6 +5,19 @@ spring:
   main:
     banner-mode: off
 
+bankcore:
+  auth:
+    jwt:
+      # Fixed key so tokens are reproducible within a test run. Test-only value.
+      secret: test-secret-key-for-bankcore-integration-tests-only
+    # Small windows keep lockout and rate-limit tests fast and explicit.
+    lockout:
+      max-attempts: 3
+      duration: 15m
+    rate-limit:
+      max-attempts: 50
+      window: 1m
+
 management:
   endpoints:
     web:

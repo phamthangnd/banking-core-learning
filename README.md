@@ -95,22 +95,35 @@ curl http://localhost:8080/actuator/health
 Expected: `{"status":"UP", ...}`.
 `GET /actuator/info` reports the application name and the current phase.
 
-### Try the Customer API
+### Create the first administrator
+
+No user is seeded — a password in a migration would be a committed secret. Start the application
+once with the bootstrap variable set:
 
 ```bash
-curl -i -X POST http://localhost:8080/api/v1/customers -H 'Content-Type: application/json' -d '{"fullName":"Alice Nguyen","email":"alice@example.com","phoneNumber":"+84 90 123 4567","dateOfBirth":"1990-01-01"}'
+BANKCORE_BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-password' ./gradlew bootRun
+```
+
+Change that password immediately and unset the variable. Set `BANKCORE_JWT_SECRET` too (at least
+32 characters); locally a random key is generated per run if it is missing, so tokens stop
+working after a restart.
+
+### Log in and call the API
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"choose-a-strong-password"}'
 ```
 
 ```bash
-curl 'http://localhost:8080/api/v1/customers?page=0&size=20&sort=CREATED_AT&direction=DESC'
+curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: Bearer <accessToken>'
 ```
 
-Full contract, including filters, sorting and paging: [docs/api/customer-api.md](docs/api/customer-api.md).
+Full contracts: [docs/api/auth-api.md](docs/api/auth-api.md) and
+[docs/api/customer-api.md](docs/api/customer-api.md).
 
-**The customer API is not authenticated yet** (Phase 03 adds JWT + RBAC), so do not expose this
-application outside a development machine. Every path other than the customer API and the
-health/info endpoints returns `403`: the security baseline denies by default and each phase
-opens only what it needs.
+Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
+bearer token, and each operation additionally requires a permission: a `TELLER` may read
+customers, an `OFFICER` may also create and close them.
 
 ### Run the tests
 
@@ -153,5 +166,10 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   sorted search, and integration tests on Testcontainers.
   Persistence notes, with measured query plans:
   [docs/learning/phase-02-postgres-jpa-flyway.md](docs/learning/phase-02-postgres-jpa-flyway.md).
+- **Phase 03 — done.** Users, roles and permissions; JWT access tokens with rotating, hashed
+  refresh tokens and reuse detection; registration, login, logout, password change/forgot/reset;
+  account lockout, rate limiting and permission checks on service methods.
+  API: [docs/api/auth-api.md](docs/api/auth-api.md).
+  Security notes: [docs/learning/phase-03-auth-jwt-rbac.md](docs/learning/phase-03-auth-jwt-rbac.md).
 
 See `PROGRESS.md` for the active phase.

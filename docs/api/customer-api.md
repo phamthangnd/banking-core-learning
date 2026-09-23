@@ -4,15 +4,20 @@ Base path: `/api/v1/customers`
 
 ## Authentication
 
-**None yet.** Phase 03 introduces JWT authentication and RBAC and closes these endpoints.
-Until then the application must not be exposed outside a development machine. The security
-baseline denies every other path by default; the customer module is opened explicitly in
-`SecurityConfig`.
+Bearer token required on every endpoint: `Authorization: Bearer <accessToken>`.
+See [auth-api.md](auth-api.md) for how to obtain one. A missing or invalid token gives
+`401 AUTHENTICATION_REQUIRED`.
 
 ## Authorization
 
-Not applicable in Phase 01. Planned in Phase 03: `ROLE_TELLER` for reads, `ROLE_OFFICER` for
-writes, with authorization enforced at the service boundary, not only in the controller.
+Enforced on the service methods with `@PreAuthorize`, so the rules apply to every caller and not
+only to HTTP requests. Lacking a permission gives `403 ACCESS_DENIED`.
+
+| Operation | Permission | Roles that hold it |
+|---|---|---|
+| `GET /customers`, `GET /customers/{id}` | `customer:read` | ADMIN, OFFICER, TELLER |
+| `POST /customers`, `PUT /customers/{id}` | `customer:write` | ADMIN, OFFICER |
+| `DELETE /customers/{id}` | `customer:close` | ADMIN, OFFICER |
 
 ## Response envelope
 
@@ -145,6 +150,8 @@ including `updatedAt`.
 | 409 | `CUSTOMER_EMAIL_ALREADY_USED` | Email already registered to another customer |
 | 422 | `CUSTOMER_RULE_VIOLATED` | Below the minimum age, future birth date, or update of a closed customer |
 | 409 | `CONCURRENT_MODIFICATION` | Two writers changed the same record; re-read and retry |
+| 401 | `AUTHENTICATION_REQUIRED` | No or invalid bearer token |
+| 403 | `ACCESS_DENIED` | Authenticated but lacking the permission |
 | 500 | `INTERNAL_ERROR` | Anything unexpected; details stay in the logs |
 
 Error codes are part of the contract: clients branch on `error.code`, never on `error.message`.
@@ -179,7 +186,6 @@ never deleted. The table carries a `version` column for optimistic locking.
 
 ## Known gaps, by design
 
-- No authentication or authorization → Phase 03.
 - Offset pagination: deep pages (`page=2000`) make the database sort and discard everything
   before them. Keyset pagination is the fix when a list becomes genuinely deep.
 - Name search uses a leading-wildcard `LIKE`, which no B-tree index can serve → trigram or

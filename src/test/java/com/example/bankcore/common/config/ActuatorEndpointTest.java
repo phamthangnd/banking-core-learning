@@ -43,8 +43,16 @@ class ActuatorEndpointTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void unknownEndpointsShouldNotBePublic() throws Exception {
+    void unknownEndpointsShouldRequireAuthentication() throws Exception {
         mockMvc.perform(get("/api/v1/anything"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    void theCustomerApiShouldNoLongerBePublic() throws Exception {
+        // Phase 01 opened this path without authentication; Phase 03 closes it.
+        mockMvc.perform(get("/api/v1/customers"))
+                .andExpect(status().isUnauthorized());
     }
 }
