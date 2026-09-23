@@ -84,8 +84,23 @@ curl http://localhost:8080/actuator/health
 
 Expected: `{"status":"UP", ...}`.
 `GET /actuator/info` reports the application name and the current phase.
-Every other path returns `403` — Phase 00 has no authentication yet, so nothing is public by
-default. JWT authentication and RBAC arrive in Phase 03.
+
+### Try the Customer API
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/customers -H 'Content-Type: application/json' -d '{"fullName":"Alice Nguyen","email":"alice@example.com","phoneNumber":"+84 90 123 4567","dateOfBirth":"1990-01-01"}'
+```
+
+```bash
+curl http://localhost:8080/api/v1/customers
+```
+
+Full contract: [docs/api/customer-api.md](docs/api/customer-api.md).
+
+**The customer API is not authenticated yet** (Phase 03 adds JWT + RBAC), so do not expose this
+application outside a development machine. Every path other than the customer API and the
+health/info endpoints returns `403`: the security baseline denies by default and each phase
+opens only what it needs.
 
 ### Run the tests
 
@@ -118,7 +133,13 @@ docker compose up -d postgres
 
 ## Current state
 
-Phase 00 is complete: Gradle wrapper, Spring Boot skeleton, configuration profiles, health
-endpoint, security baseline, Java fundamentals exercises and their tests.
-See `PROGRESS.md` for the active phase and `docs/learning/phase-00-java-comeback.md` for the
-Java notes that go with the Phase 00 code.
+- **Phase 00 — done.** Gradle wrapper, Spring Boot skeleton, configuration profiles, health
+  endpoint, security baseline, Java fundamentals exercises and their tests.
+  Java notes: [docs/learning/phase-00-java-comeback.md](docs/learning/phase-00-java-comeback.md).
+- **Phase 01 — done.** Customer CRUD in memory: controller, service, domain model, repository
+  port, DTOs with Bean Validation, standardized response envelope, global exception handler,
+  correlation ids and typed configuration properties.
+  API contract: [docs/api/customer-api.md](docs/api/customer-api.md).
+  Spring notes: [docs/learning/phase-01-spring-foundation.md](docs/learning/phase-01-spring-foundation.md).
+
+See `PROGRESS.md` for the active phase.

@@ -25,6 +25,12 @@ spring:
 
   jackson:
     default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  mvc:
+    problemdetails:
+      enabled: false
 
 management:
   endpoints:
@@ -41,12 +47,23 @@ management:
 info:
   app:
     name: BankCore
-    phase: "00 - Project Bootstrap & Java Comeback"
+    phase: "01 - Spring Boot Foundation"
 
 server:
   port: 8080
 
+# Module settings. Bound to typed records (see CustomerProperties) and validated at startup.
+bankcore:
+  customer:
+    minimum-age-years: 18
+    max-records: 10000
+    max-list-size: 100
+
 logging:
+  # Every log line carries the correlation id set by CorrelationIdFilter, so a response's
+  # traceId leads straight to the log lines of that request.
+  pattern:
+    level: "%5p [${spring.application.name:bankcore},%X{traceId:-}]"
   level:
     root: INFO
     com.example.bankcore: INFO
