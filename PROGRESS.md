@@ -4,8 +4,8 @@ This file is the source of truth for execution state.
 
 ## State
 
-CURRENT_PHASE: 08
-CURRENT_TASK: search-masterdata-import-export
+CURRENT_PHASE: 09
+CURRENT_TASK: redis-kafka-async
 STATUS: READY
 BLOCKERS: NONE
 
@@ -21,8 +21,8 @@ BLOCKERS: NONE
 | 05 | Core Banking Transactions | DONE |
 | 06 | Ledger + Concurrency + Idempotency | DONE |
 | 07 | Files + Notifications + Audit | DONE |
-| 08 | Search + Master Data + Import/Export | READY |
-| 09 | Redis + Kafka + Async Processing | PENDING |
+| 08 | Search + Master Data + Import/Export | DONE |
+| 09 | Redis + Kafka + Async Processing | READY |
 | 10 | Testing + Security Hardening | PENDING |
 | 11 | Observability + Performance | PENDING |
 | 12 | Docker + CI/CD + Production | PENDING |
@@ -46,7 +46,7 @@ BLOCKERS: NONE
 - [x] Phase 05 complete
 - [x] Phase 06 complete
 - [x] Phase 07 complete
-- [ ] Phase 08 complete
+- [x] Phase 08 complete
 - [ ] Phase 09 complete
 - [ ] Phase 10 complete
 - [ ] Phase 11 complete
@@ -338,3 +338,34 @@ Deliberately deferred:
 - Virus scanning, signed download URLs and a CDN.
 - Moving notification delivery onto a queue -> Phase 09.
 - Audit retention and export.
+
+### Phase 08 — Search + Master Data + Import/Export (DONE, 2026-09-23)
+
+Delivered:
+- Schema (`V11`): `master_data` (type + code identity, label, sort order, active flag, optimistic locking) seeded with branches, document types, currencies and transaction categories. `V12` seeds `masterdata:read`, `masterdata:write`, `customer:import` and `report:export`.
+- `masterdata` module: domain record where the code is identity and only presentation changes, JPA adapter, `MasterDataService` with `@Cacheable`/`@CacheEvict` (in-memory for now; Redis in Phase 09) and `MasterDataController`.
+- `common/pagination`: `Cursor` (opaque Base64 `instant|id`) and `KeysetPage`, alongside the existing offset paging. The trade-off is documented — keyset cannot jump to a page number, offset cannot stay cheap at depth.
+- Keyset reads on the transaction repository, split into a first-page query and an after-cursor query.
+- `report` module: `ImportReport` with row-level errors, `CustomerImportService` (POI, row-independent, reusing `CustomerService` so no rule can be bypassed), `StatementExportService` (SXSSF streaming workbook and a paged PDFBox document, both written straight to the response stream) and `ReportController`.
+- Dynamic multi-criteria search already existed from Phases 02, 04, 05 and 07 via Specifications; this phase adds the reference data those filters choose from.
+
+Verification:
+- `./gradlew clean build` — BUILD SUCCESSFUL, 363 tests, 0 failures, 0 skipped, no compiler warnings.
+- `ImportExportIntegrationTest`: valid rows import; a file with a missing name, an underage customer and a malformed date imports the two good rows and reports three errors with the spreadsheet's own line numbers; a duplicate email is a row error; a non-spreadsheet upload is `IMPORT_FAILED`; blank rows are skipped; the Excel statement has one row per transaction under a named header; the PDF starts with `%PDF-`; a 520-transaction history — past the 500-row batch boundary — exports with no duplicated or missing reference; export requires `report:export`.
+
+Acceptance criteria:
+- [x] multi-criteria search works
+- [x] large datasets remain paginated
+- [x] import reports row-level errors
+- [x] export does not load unbounded data into memory
+
+Issue found and fixed during the phase:
+- The first keyset query passed a null cursor as a bind parameter, and PostgreSQL rejected it with "could not determine data type of parameter" — the same failure mode as the optional filters in Phase 02. Split into two queries rather than handling the null in SQL.
+
+Dependencies added, with justification:
+- `org.apache.poi:poi-ooxml` — Java has no built-in xlsx support, and SXSSF's streaming writer is what keeps the export's memory flat.
+- `org.apache.pdfbox:pdfbox` — no built-in PDF support either.
+
+Deliberately deferred:
+- Asynchronous import with a job id to poll -> Phase 09.
+- CSV import, a validating dry run, and a PDF with branding and an embedded font for non-ASCII text.

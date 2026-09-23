@@ -57,6 +57,15 @@ public enum ErrorCode {
     /** The addressed notification does not exist. */
     NOTIFICATION_NOT_FOUND(Category.NOT_FOUND),
 
+    /** No reference-data entry with that type and code. */
+    MASTER_DATA_NOT_FOUND(Category.NOT_FOUND),
+
+    /** That reference-data code is already taken within its type. */
+    MASTER_DATA_DUPLICATE(Category.CONFLICT),
+
+    /** A bulk import could not be read at all. */
+    IMPORT_FAILED(Category.VALIDATION),
+
     /** Two concurrent writers modified the same record; the loser must retry. */
     CONCURRENT_MODIFICATION(Category.CONFLICT),
 

@@ -121,7 +121,8 @@ curl 'http://localhost:8080/api/v1/customers?page=0&size=20' -H 'Authorization: 
 Full contracts: [auth](docs/api/auth-api.md), [customers](docs/api/customer-api.md),
 [accounts](docs/api/account-api.md), [transactions](docs/api/transaction-api.md),
 [ledger](docs/api/ledger-api.md) and
-[files/notifications/audit](docs/api/files-notifications-audit-api.md).
+[files/notifications/audit](docs/api/files-notifications-audit-api.md) and
+[master data/reports](docs/api/masterdata-reports-api.md).
 
 Everything except `/actuator/health`, `/actuator/info` and the public auth endpoints requires a
 bearer token, and each operation additionally requires a permission: a `TELLER` may read
@@ -192,5 +193,8 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
   magic-byte checks, a per-user notification inbox, an email port, and an append-only audit trail
   recording actor, action, resource, outcome and trace id.
   API: [docs/api/files-notifications-audit-api.md](docs/api/files-notifications-audit-api.md).
+- **Phase 08 — done.** Editable master data with an evicting cache, bulk customer import with a
+  row-level error report, and streaming statement export to Excel and PDF over keyset pagination.
+  API: [docs/api/masterdata-reports-api.md](docs/api/masterdata-reports-api.md).
 
 See `PROGRESS.md` for the active phase.

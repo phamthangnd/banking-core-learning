@@ -39,6 +39,11 @@ dependencies {
     // real object storage in production, which is the whole reason for using MinIO in dev.
     implementation 'software.amazon.awssdk:s3:2.29.29'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
+    // Java has no built-in xlsx or PDF support and neither format is reasonable to hand-roll.
+    // POI's SXSSF writer streams rows to disk instead of building the whole workbook in memory,
+    // which is the property the export requirement actually depends on.
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.3'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'

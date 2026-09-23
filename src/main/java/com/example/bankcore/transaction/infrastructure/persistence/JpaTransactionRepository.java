@@ -67,6 +67,18 @@ public class JpaTransactionRepository implements TransactionRepository {
         return jpaRepository.nextReferenceSequence();
     }
 
+    @Override
+    public List<Transaction> findAfter(UUID accountId,
+                                       com.example.bankcore.common.pagination.Cursor after, int limit) {
+        var page = org.springframework.data.domain.PageRequest.ofSize(limit);
+
+        var entities = after == null
+                ? jpaRepository.findFirstPage(accountId, page)
+                : jpaRepository.findAfter(accountId, after.timestamp(), after.id(), page);
+
+        return entities.stream().map(TransactionEntity::toDomain).toList();
+    }
+
     private static Specification<TransactionEntity> specification(TransactionSearchQuery query) {
         List<Specification<TransactionEntity>> predicates = new ArrayList<>();
 

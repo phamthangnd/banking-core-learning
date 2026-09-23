@@ -22,4 +22,17 @@ public interface TransactionRepository {
     PageResult<Transaction> search(TransactionSearchQuery query);
 
     long nextReferenceSequence();
+
+    /**
+     * One keyset page of an account's history, oldest first.
+     *
+     * <p>Used by the export, which walks the whole history in batches. Offset paging would make
+     * the database produce and discard every earlier row on each batch, so exporting a long
+     * history would cost time quadratic in its length.
+     *
+     * @param after only rows strictly after this position, or {@code null} to start
+     */
+    java.util.List<Transaction> findAfter(java.util.UUID accountId,
+                                          com.example.bankcore.common.pagination.Cursor after,
+                                          int limit);
 }
