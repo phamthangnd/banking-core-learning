@@ -1,0 +1,15 @@
+# Automated test profile: quiet, deterministic, no external infrastructure.
+spring:
+  main:
+    banner-mode: off
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: WARN
+    com.example.bankcore: INFO

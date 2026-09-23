@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: bankcore
+
+  profiles:
+    default: local
+
+  # Phase 00 is a runtime skeleton: there is no database yet.
+  # PostgreSQL + JPA + Flyway are introduced in Phase 02, which removes these
+  # exclusions and replaces them with a real datasource configuration.
+  # UserDetailsService is excluded so Spring Boot never generates and logs a
+  # default password (CLAUDE.md section 4: secrets must never reach the logs).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: BankCore
+    phase: "00 - Project Bootstrap & Java Comeback"
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.example.bankcore: INFO

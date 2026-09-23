@@ -1,0 +1,24 @@
+# Production profile.
+# Rules that must never be relaxed here (CLAUDE.md sections 4 and 5):
+#   - schema evolution belongs to Flyway, never to Hibernate (ddl-auto=validate)
+#   - actuator exposes the minimum surface
+#   - health details are never shown to anonymous callers
+#   - secrets come from the environment, never from this file
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: WARN
+    com.example.bankcore: INFO

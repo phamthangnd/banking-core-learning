@@ -1,0 +1,13 @@
+# Local development profile: verbose enough to learn from, never used in production.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.example.bankcore: DEBUG
